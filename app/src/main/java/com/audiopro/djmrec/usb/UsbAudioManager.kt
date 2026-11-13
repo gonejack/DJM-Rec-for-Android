@@ -75,18 +75,21 @@ class UsbAudioManager(private val context: Context) {
 
     fun refreshInputs() {
         val connected = usbManager.deviceList.values
-        diagnosticDevices.retainAll(connected.map { it.deviceName }.toSet())
-        inspectedInputs.keys.retainAll(connected.map { it.deviceName }.toSet())
-        connected.filter { diagnosticDevices.add(it.deviceName) }.forEach { device ->
-            trace(device, "refreshInputs", "permission=${usbManager.hasPermission(device)}; capture candidate=${isCaptureCandidate(device)}; " +
-                (0 until device.interfaceCount).joinToString { index ->
-                    val intf = device.getInterface(index)
-                    "if${intf.id}/alt${intf.alternateSetting} class=${intf.interfaceClass}/${intf.interfaceSubclass} protocol=${intf.interfaceProtocol} " +
-                        (0 until intf.endpointCount).joinToString { epIndex ->
-                            val ep = intf.getEndpoint(epIndex)
-                            "ep=${ep.address} direction=${ep.direction} type=${ep.type} packet=${ep.maxPacketSize} interval=${ep.interval}"
-                        }
-                })
+        val connectedNames = connected.mapTo(mutableSetOf()) { it.deviceName }
+        diagnosticDevices.retainAll(connectedNames)
+        inspectedInputs.keys.retainAll(connectedNames)
+        connected.forEach { device ->
+            if (diagnosticDevices.add(device.deviceName)) {
+                trace(device, "refreshInputs", "permission=${usbManager.hasPermission(device)}; capture candidate=${isCaptureCandidate(device)}; " +
+                    (0 until device.interfaceCount).joinToString { index ->
+                        val intf = device.getInterface(index)
+                        "if${intf.id}/alt${intf.alternateSetting} class=${intf.interfaceClass}/${intf.interfaceSubclass} protocol=${intf.interfaceProtocol} " +
+                            (0 until intf.endpointCount).joinToString { epIndex ->
+                                val ep = intf.getEndpoint(epIndex)
+                                "ep=${ep.address} direction=${ep.direction} type=${ep.type} packet=${ep.maxPacketSize} interval=${ep.interval}"
+                            }
+                    })
+            }
         }
         _inputs.value = connected.flatMap { device ->
             val product = device.productName ?: "USB ${device.vendorId.toString(16)}:${device.productId.toString(16)}"

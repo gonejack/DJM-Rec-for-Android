@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,7 @@ import com.audiopro.djmrec.ui.theme.MeterGreen
 import com.audiopro.djmrec.ui.theme.MeterRed
 import com.audiopro.djmrec.ui.theme.SurfaceVariantDark
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val METER_FLOOR_DB = -60f
 private const val METER_CEILING_DB = 3f
@@ -81,14 +83,14 @@ private fun HorizontalChannelMeter(label: String, level: ChannelLevel) {
         if (level.isClipping) {
             clipLatched = true
         } else {
-            delay(CLIP_LATCH_MS)
+            delay(CLIP_LATCH_MS.milliseconds)
             clipLatched = false
         }
     }
 
     // Peak hold: latch every new maximum; once the hold window passes without one, fall
     // back to the live peak so the marker and readout show the take's real peak value.
-    var heldPeak by remember { mutableStateOf(level.peakDb) }
+    var heldPeak by remember { mutableFloatStateOf(level.peakDb) }
     var heldSince by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(level.peakDb) {
         val now = System.currentTimeMillis()

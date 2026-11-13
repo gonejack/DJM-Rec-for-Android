@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
@@ -68,6 +67,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.audiopro.djmrec.DjmRecApplication
@@ -75,12 +75,11 @@ import com.audiopro.djmrec.R
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.DjmRecMotion
-import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.SurfaceVariantDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
-import androidx.core.net.toUri
+import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 
 /**
  * First-run setup stepper. Collects every permission DJM REC needs (microphone, notifications,
