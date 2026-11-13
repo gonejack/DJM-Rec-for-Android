@@ -100,6 +100,8 @@ import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.core.content.edit
+import androidx.core.net.toUri
 
 @Composable
 fun LiveStreamScreen(viewModel: MainViewModel) {
@@ -133,7 +135,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     var saveVideo by rememberSaveable { mutableStateOf(false) }
 
     fun openUrl(url: String) {
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
             .onFailure { localError = "No browser is available" }
     }
 
@@ -172,13 +174,13 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
             artworkUri?.takeIf { it != uri.toString() }?.let { previous ->
                 runCatching {
                     context.contentResolver.releasePersistableUriPermission(
-                        Uri.parse(previous),
+                        previous.toUri(),
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 }
             }
             artworkUri = uri.toString()
-            artworkPreferences.edit().putString("custom_artwork_uri", uri.toString()).apply()
+            artworkPreferences.edit { putString("custom_artwork_uri", uri.toString()) }
             localError = null
         }
     }
@@ -408,7 +410,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         if (videoMode == LiveVideoMode.ARTWORK) {
                             CustomArtworkPicker(artworkUri, true, { artworkPicker.launch(arrayOf("image/*")) }, {
                                 artworkUri = null
-                                artworkPreferences.edit().remove("custom_artwork_uri").apply()
+                                artworkPreferences.edit { remove("custom_artwork_uri") }
                             })
                             Text("Still artwork uses less power than the camera.", style = MaterialTheme.typography.bodySmall)
                         }

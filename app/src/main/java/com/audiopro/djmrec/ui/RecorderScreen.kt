@@ -122,9 +122,12 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                             else -> "STANDBY"
                         }
                         AnimatedContent(targetState = label, label = "captureStatus") { status ->
-                            Text(status, color = if (active) AccentRed else AccentGreen,
-                                style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                            Text(status,
+                                color = if (active) AccentRed else AccentGreen,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                            )
                         }
                         Text(if (advanced && device != null) "MULTITRACK" else if (waveform) "3-BAND" else "METERS",
                             style = MaterialTheme.typography.labelSmall, color = TextSecondary)
