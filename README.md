@@ -57,6 +57,10 @@ track next to the master, for example each deck post-fader, ready to mix again i
   device.
 - Needs an input with more than 2 channels. A stereo-only input has nothing extra to record.
 
+**Cubilux CB5:** MIC1, MIC2 and Line In use three separate stereo USB interfaces. Selecting
+these inputs and recording them together need additional support; see the
+[development handoff and captured USB descriptors](docs/cubilux-cb5-development.md).
+
 ## Features
 
 <table>

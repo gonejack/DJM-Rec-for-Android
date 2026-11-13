@@ -1,0 +1,423 @@
+{
+  "capture": {
+    "date": "2026-11-13",
+    "analysis_base_commit": "2f36d11",
+    "configuration_file": "usb-configuration.bin",
+    "configuration_sha256": "25ca891c80134ab3245d32eec2c721d2466dc0379735a989185b568ee60283d7",
+    "method": "macOS IOKit IOUSBDeviceInterface.GetConfigurationDescriptorPtr(index=0), without USBDeviceOpen",
+    "interface_names_source": "macOS IORegistry IOUSBHostInterface entries for the same connected device",
+    "parser": "Inspection script; selection_using_current_policy models the repository comparator and is not an Android capture result",
+    "validation_scope": "USB enumeration and cached configuration descriptors only; no audio recording, clock GET_RANGE/SET or Android testing",
+    "system_reported_nominal_sample_rate_hz": 48000
+  },
+  "device": {
+    "product_name": "CUBILUX CB5",
+    "vendor_name": "Generic",
+    "vendor_id": 3034,
+    "product_id": 20262,
+    "usb_bcd": 512,
+    "device_class": 239,
+    "device_subclass": 2,
+    "device_protocol": 1,
+    "configuration_count": 1
+  },
+  "vid": "0bda",
+  "pid": "4f26",
+  "configuration_bytes": 930,
+  "interface_count": 6,
+  "active_stream_formats": [
+    {
+      "interface": 1,
+      "name": "Cubilux CB5 MIC1",
+      "alt": 1,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x81",
+          "direction": "IN",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 60,
+          "interval": 1
+        }
+      ],
+      "terminal": 17,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 2,
+      "bits": 16
+    },
+    {
+      "interface": 1,
+      "name": "Cubilux CB5 MIC1",
+      "alt": 2,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x81",
+          "direction": "IN",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 90,
+          "interval": 1
+        }
+      ],
+      "terminal": 17,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 3,
+      "bits": 24
+    },
+    {
+      "interface": 2,
+      "name": "Cubilux CB5 Line In",
+      "alt": 1,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x82",
+          "direction": "IN",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 124,
+          "interval": 1
+        }
+      ],
+      "terminal": 18,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 2,
+      "bits": 16
+    },
+    {
+      "interface": 2,
+      "name": "Cubilux CB5 Line In",
+      "alt": 2,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x82",
+          "direction": "IN",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 186,
+          "interval": 1
+        }
+      ],
+      "terminal": 18,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 3,
+      "bits": 24
+    },
+    {
+      "interface": 3,
+      "name": "Cubilux CB5 MIC2",
+      "alt": 1,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x83",
+          "direction": "IN",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 60,
+          "interval": 1
+        }
+      ],
+      "terminal": 19,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 2,
+      "bits": 16
+    },
+    {
+      "interface": 3,
+      "name": "Cubilux CB5 MIC2",
+      "alt": 2,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x83",
+          "direction": "IN",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 90,
+          "interval": 1
+        }
+      ],
+      "terminal": 19,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 3,
+      "bits": 24
+    },
+    {
+      "interface": 4,
+      "name": "Cubilux CB5 HP Out",
+      "alt": 1,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x05",
+          "direction": "OUT",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 124,
+          "interval": 1
+        }
+      ],
+      "terminal": 13,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 2,
+      "bits": 16
+    },
+    {
+      "interface": 4,
+      "name": "Cubilux CB5 HP Out",
+      "alt": 2,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x05",
+          "direction": "OUT",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 186,
+          "interval": 1
+        }
+      ],
+      "terminal": 13,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 3,
+      "bits": 24
+    },
+    {
+      "interface": 4,
+      "name": "Cubilux CB5 HP Out",
+      "alt": 3,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x05",
+          "direction": "OUT",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 248,
+          "interval": 1
+        }
+      ],
+      "terminal": 13,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 4,
+      "bits": 32
+    },
+    {
+      "interface": 5,
+      "name": "Cubilux CB5 Line Out",
+      "alt": 1,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x06",
+          "direction": "OUT",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 124,
+          "interval": 1
+        }
+      ],
+      "terminal": 14,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 2,
+      "bits": 16
+    },
+    {
+      "interface": 5,
+      "name": "Cubilux CB5 Line Out",
+      "alt": 2,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x06",
+          "direction": "OUT",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 186,
+          "interval": 1
+        }
+      ],
+      "terminal": 14,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 3,
+      "bits": 24
+    },
+    {
+      "interface": 5,
+      "name": "Cubilux CB5 Line Out",
+      "alt": 3,
+      "protocol": "0x20",
+      "endpoints": [
+        {
+          "address": "0x06",
+          "direction": "OUT",
+          "type": 1,
+          "usage": 0,
+          "packet_bytes": 248,
+          "interval": 1
+        }
+      ],
+      "terminal": 14,
+      "format_type": 1,
+      "formats": 1,
+      "channels": 2,
+      "subslot": 4,
+      "bits": 32
+    }
+  ],
+  "clock_sources": [
+    {
+      "id": 1,
+      "attributes": 7,
+      "controls": 7,
+      "association": 0
+    },
+    {
+      "id": 2,
+      "attributes": 7,
+      "controls": 7,
+      "association": 0
+    },
+    {
+      "id": 3,
+      "attributes": 7,
+      "controls": 7,
+      "association": 0
+    },
+    {
+      "id": 5,
+      "attributes": 7,
+      "controls": 7,
+      "association": 0
+    },
+    {
+      "id": 6,
+      "attributes": 7,
+      "controls": 7,
+      "association": 0
+    }
+  ],
+  "terminals": [
+    {
+      "kind": "input",
+      "id": 9,
+      "type": "0x0201",
+      "clock": 1,
+      "channels": 2
+    },
+    {
+      "kind": "output",
+      "id": 17,
+      "type": "0x0101",
+      "source": 25,
+      "clock": 1
+    },
+    {
+      "kind": "input",
+      "id": 10,
+      "type": "0x0603",
+      "clock": 2,
+      "channels": 2
+    },
+    {
+      "kind": "output",
+      "id": 18,
+      "type": "0x0101",
+      "source": 26,
+      "clock": 2
+    },
+    {
+      "kind": "input",
+      "id": 11,
+      "type": "0x0203",
+      "clock": 3,
+      "channels": 2
+    },
+    {
+      "kind": "output",
+      "id": 19,
+      "type": "0x0101",
+      "source": 27,
+      "clock": 3
+    },
+    {
+      "kind": "input",
+      "id": 13,
+      "type": "0x0101",
+      "clock": 5,
+      "channels": 2
+    },
+    {
+      "kind": "output",
+      "id": 21,
+      "type": "0x0302",
+      "source": 29,
+      "clock": 5
+    },
+    {
+      "kind": "input",
+      "id": 14,
+      "type": "0x0101",
+      "clock": 6,
+      "channels": 2
+    },
+    {
+      "kind": "output",
+      "id": 22,
+      "type": "0x0603",
+      "source": 30,
+      "clock": 6
+    }
+  ],
+  "capture_channels": [
+    2
+  ],
+  "selection_using_current_policy": {
+    "interface": 1,
+    "name": "Cubilux CB5 MIC1",
+    "alt": 2,
+    "protocol": "0x20",
+    "endpoints": [
+      {
+        "address": "0x81",
+        "direction": "IN",
+        "type": 1,
+        "usage": 0,
+        "packet_bytes": 90,
+        "interval": 1
+      }
+    ],
+    "terminal": 17,
+    "format_type": 1,
+    "formats": 1,
+    "channels": 2,
+    "subslot": 3,
+    "bits": 24
+  }
+}
