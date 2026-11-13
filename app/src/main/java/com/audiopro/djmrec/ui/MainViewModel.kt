@@ -35,6 +35,7 @@ import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
 import com.audiopro.djmrec.usb.UsbIsoCaptureHandle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -334,6 +335,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     @SuppressLint("StaticFieldLeak")
     private var boundService: RecordingService? = null
     private var isBound = false
+    private var recordingPlaybackUsers = 0
     private var uiVisible = false
     private var waveformVisible = false
     private var multitrackVisible = false
@@ -502,8 +504,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ensureLiveMonitoring()
     }
 
+    /**
+     * Raw CB5 capture and Android's USB playback driver cannot own the same sound card.
+     * Keep capture released for the library's lifetime, including editor previews.
+     */
+    suspend fun withRecordingPlayback(block: suspend () -> Unit) {
+        val device = deviceState.value
+        val directCb5 = device?.vendorId == 0x0BDA && device.productId == 0x4F26
+        if (directCb5 && (saving.value || liveStreamState.value.isActive ||
+                _recordingState.value is RecordingState.Recording || _recordingState.value is RecordingState.Paused)) {
+            error("Stop recording and Go Live before playing through CB5.")
+        }
+        recordingPlaybackUsers++
+        try {
+            if (directCb5) {
+                val service = boundService ?: error("Audio service is not ready. Open Recordings again.")
+                check(service.releaseMonitoringForPlayback()) {
+                    "Stop recording and Go Live before playing through CB5."
+                }
+                check(withContext(NonCancellable + Dispatchers.IO) {
+                    usbAudioManager.restoreSystemAudioDriver()
+                }) { "Could not restore CB5 playback. Disconnect and reconnect the USB cable." }
+            }
+            block()
+        } finally {
+            recordingPlaybackUsers--
+            if (recordingPlaybackUsers == 0) ensureLiveMonitoring()
+        }
+    }
+
     fun ensureLiveMonitoring() {
-        if (sessionEvents.closeRequested.value || boundService == null) return
+        if (recordingPlaybackUsers > 0 || sessionEvents.closeRequested.value || boundService == null) return
         val context = getApplication<Application>()
         if (deviceState.value != null &&
             (_recordingState.value is RecordingState.Idle ||

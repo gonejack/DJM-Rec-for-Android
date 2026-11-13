@@ -145,7 +145,7 @@ fun MainScreen(viewModel: MainViewModel) {
                     when (destination) {
                         Destination.RECORDING -> RecorderScreen(viewModel = viewModel, onOpenLibrary = { selectedDestination = Destination.RECORDINGS })
                         Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
-                        Destination.RECORDINGS -> LibraryScreen(onBack = null)
+                        Destination.RECORDINGS -> LibraryScreen(viewModel = viewModel, onBack = null)
                         Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
                     }
                 }

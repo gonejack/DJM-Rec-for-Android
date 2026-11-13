@@ -63,6 +63,7 @@ class UsbAudioManager(private val context: Context) {
     val inputs = _inputs.asStateFlow()
     private val _connectionNotice = MutableStateFlow<String?>(null)
     val connectionNotice = _connectionNotice.asStateFlow()
+    private var restoredSystemAudioDevice: String? = null
     private var requestedDeviceName: String? = null
     private var requestedInterfaceNumbers: List<Int>? = null
     private val inputPreferences = context.getSharedPreferences("usb_inputs", Context.MODE_PRIVATE)
@@ -489,7 +490,9 @@ class UsbAudioManager(private val context: Context) {
             val controlInterface = (0 until device.interfaceCount)
                 .map { device.getInterface(it) }
                 .firstOrNull { it.id == clock.interfaceNumber }
-            if (controlInterface == null || !connection.claimInterface(controlInterface, true)) {
+            // Descriptor inspection must not detach Android's audio driver just to read rates.
+            // Native direct capture verifies its clock when it takes ownership of the device.
+            if (controlInterface == null || !connection.claimInterface(controlInterface, false)) {
                 Log.w(TAG, "Clock source ${clock.id}: could not claim AC interface ${clock.interfaceNumber}")
                 return@forEach
             }
@@ -634,6 +637,7 @@ class UsbAudioManager(private val context: Context) {
                 releaseIsoCaptureConnection()
                 return null
             }
+            restoredSystemAudioDevice = null
             activeIsoConnections += connection
             if (primary) info.pioneerMixerProfile?.let { establishPioneerRoute(connection, it) }
             val clock = if (info.pioneerMixerProfile == null && streaming != null && topology != null)
@@ -663,9 +667,42 @@ class UsbAudioManager(private val context: Context) {
         return handles.takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * CB5 direct capture detaches streaming interfaces from snd-usb-audio. Rebinding the
+     * AudioControl driver recreates the whole system sound card, including its outputs.
+     * During capture, preserve the selected inputs and return playback to Android immediately;
+     * OEM task removals can kill the process without running any cleanup callback.
+     * Must run off the main thread, serialized with native capture open/close.
+     */
+    fun restoreSystemAudioDriver(preserveCapture: Boolean = false): Boolean {
+        val info = _deviceState.value ?: return true
+        if (info.vendorId != 0x0BDA || info.productId != 0x4F26) return true
+        if (preserveCapture) {
+            if (activeIsoConnections.isEmpty()) return false
+        } else {
+            if (activeIsoConnections.isNotEmpty()) return false
+            if (restoredSystemAudioDevice == info.deviceName) return true
+        }
+        val device = usbManager.deviceList[info.deviceName] ?: return false
+        if (!usbManager.hasPermission(device)) return false
+        val connection = usbManager.openDevice(device) ?: return false
+        val restored = try {
+            UsbAudioDriver.restoreSystemAudio(
+                connection.fileDescriptor, 0,
+                if (preserveCapture) info.selectedInterfaceNumbers.toIntArray() else intArrayOf()
+            )
+        } finally {
+            connection.close()
+        }
+        if (restored && !preserveCapture) restoredSystemAudioDevice = info.deviceName
+        return restored
+    }
+
     /** Called only after every native USB source has stopped using these descriptors. */
     fun releaseIsoCaptureConnection() {
+        val hadConnections = activeIsoConnections.isNotEmpty()
         activeIsoConnections.forEach(UsbDeviceConnection::close)
         activeIsoConnections.clear()
+        if (hadConnections) restoreSystemAudioDriver()
     }
 }

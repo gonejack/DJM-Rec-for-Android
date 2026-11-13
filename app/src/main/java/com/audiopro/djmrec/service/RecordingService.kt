@@ -50,6 +50,9 @@ import com.audiopro.djmrec.streaming.LiveStreamController
 import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.android.asCoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -900,6 +903,11 @@ class RecordingService : LifecycleService() {
                     releaseIsoConnectionIfNeeded()
                     return@post
                 }
+                // Keep CB5 playback usable even on OEMs that force-stop without onTaskRemoved.
+                if (!(application as DjmRecApplication).usbAudioManager.restoreSystemAudioDriver(preserveCapture = true)) {
+                    Log.w(TAG, "Could not restore system USB playback while capturing")
+                }
+                if (abandonStaleOpen(token)) return@post
                 if (independentInputsSession) {
                     val route = mixRoute.validated(AudioEngine.getTrackChannelCount() / 2)
                     AudioEngine.setMixSources(route.leftChannel, route.rightChannel)
@@ -1314,6 +1322,27 @@ class RecordingService : LifecycleService() {
         updateNotification()
     }
 
+    /** Serializes the handoff with native open/health work; never interrupts a take or live. */
+    suspend fun releaseMonitoringForPlayback(): Boolean {
+        if (_saving.value || _liveState.value.isActive ||
+            _state.value is RecordingState.Recording || _state.value is RecordingState.Paused) return false
+        sessionOpenToken++
+        _state.value = RecordingState.Preparing
+        return withContext(NonCancellable + monitorHandler.asCoroutineDispatcher("USB playback handoff")) {
+            AudioEngine.close()
+            releaseIsoConnectionIfNeeded()
+            releaseWakeLock()
+            _elapsedMillis.value = 0L
+            _levels.value = StereoLevels(floorLevel, floorLevel)
+            _waveformBins.value = emptyWaveform
+            resetMultitrackState()
+            _health.value = RecordingHealth.Ready
+            _state.value = RecordingState.Idle
+            dismissNotification()
+            true
+        }
+    }
+
     fun stopSession(notice: String? = null) {
         if (_saving.value) return
         pendingRecordingFormat = null
@@ -1398,6 +1427,7 @@ class RecordingService : LifecycleService() {
     }
 
     private fun stopAndClose() {
+        if (closeAfterSave && events.closeRequested.value) return
         closeAfterSave = true
         events.closeRequested.value = true
         if (_saving.value) return
@@ -1552,6 +1582,14 @@ class RecordingService : LifecycleService() {
 
     fun setDeviceLabel(label: String) {
         deviceLabel = label
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Keep stopWithTask=false so this path can finish publishing the recording before
+        // stopping the service. Home/lock still allow recording; removing the task closes it.
+        Log.i(TAG, "Task removed; saving recording and releasing USB capture")
+        stopAndClose()
     }
 
     @Synchronized

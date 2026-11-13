@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.audiopro.djmrec.audio.RecordingPlaybackOutput
 import com.audiopro.djmrec.storage.LibraryRecording
 import com.audiopro.djmrec.storage.RecordingLibrary
 import com.audiopro.djmrec.ui.theme.AccentGreen
@@ -67,7 +68,9 @@ import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.SurfaceVariantDark
 import com.audiopro.djmrec.ui.theme.TextSecondary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,7 +78,7 @@ import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
-fun LibraryScreen(onBack: (() -> Unit)? = null) {
+fun LibraryScreen(viewModel: MainViewModel, onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var refresh by remember { mutableIntStateOf(0) }
@@ -90,6 +93,20 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
     var delete by remember { mutableStateOf<LibraryRecording?>(null) }
     var editing by remember { mutableStateOf<LibraryRecording?>(null) }
     var exportTarget by remember { mutableStateOf<LibraryRecording?>(null) }
+    var playbackReady by remember { mutableStateOf(false) }
+    var playbackFailure by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(viewModel) {
+        try {
+            viewModel.withRecordingPlayback {
+                playbackReady = true
+                awaitCancellation()
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            playbackFailure = failure.message ?: "Could not prepare audio playback"
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val target = exportTarget
@@ -170,7 +187,13 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
                 }
             }
         }
-        selected?.let { recording -> SetPlayer(recording, onClose = { selected = null }, onError = { error = it }) }
+        selected?.let { recording ->
+            when {
+                playbackFailure != null -> Text(playbackFailure.orEmpty(), color = AccentRed)
+                playbackReady -> SetPlayer(recording, onClose = { selected = null }, onError = { error = it })
+                else -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        }
         SnackbarHost(snackbarHostState, Modifier.fillMaxWidth())
     }
     rename?.let { recording -> AlertDialog(onDismissRequest = { if (!busy) rename = null }, title = { Text("Rename set") },
@@ -220,7 +243,7 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
                 }
             }
         }) { Text("Delete", color = AccentRed) } }, dismissButton = { TextButton(onClick = { delete = null }, enabled = !busy) { Text("Keep") } }) }
-    editing?.let { recording ->
+    editing?.takeIf { playbackReady }?.let { recording ->
         SetEditorDialog(recording, onClose = { editing = null; refresh++ })
     }
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Could not complete action") },
@@ -235,20 +258,42 @@ private fun SetPlayer(recording: LibraryRecording, onClose: () -> Unit, onError:
     var playing by remember(recording.uri) { mutableStateOf(false) }
     var position by remember(recording.uri) { mutableLongStateOf(0L) }
     var duration by remember(recording.uri) { mutableLongStateOf(recording.duration) }
+    var output by remember(recording.uri) { mutableStateOf("System default") }
+    val playbackOutput = remember(player) { RecordingPlaybackOutput(context, player) { output = it } }
     DisposableEffect(player) {
-        player.setOnPreparedListener { ready = true; duration = it.duration.toLong(); it.start(); playing = true }
+        playbackOutput.start()
+        player.setOnPreparedListener {
+            ready = true
+            duration = it.duration.toLong()
+            playbackOutput.refresh()
+            it.start()
+            playing = true
+            playbackOutput.reportOutput()
+        }
         player.setOnCompletionListener { playing = false; position = duration }
         player.setOnErrorListener { _, _, _ -> playing = false; ready = false; onError("This recording could not be played"); true }
         runCatching { player.setDataSource(context, recording.uri); player.prepareAsync() }.onFailure { onError("Could not open recording") }
-        onDispose { player.release() }
+        onDispose { playbackOutput.close(); player.release() }
     }
-    LaunchedEffect(player, playing) { while (playing) { position = runCatching { player.currentPosition.toLong() }.getOrDefault(position); delay(
-        200.milliseconds
-    ) } }
+    LaunchedEffect(player, playing) {
+        while (playing) {
+            position = runCatching { player.currentPosition.toLong() }.getOrDefault(position)
+            // The first audio route can become available after onPrepared/start returns.
+            playbackOutput.reportOutput()
+            delay(200.milliseconds)
+        }
+    }
     Surface(shape = RoundedCornerShape(16.dp), color = SurfaceVariantDark) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(enabled = ready, onClick = { if (playing) player.pause() else player.start(); playing = !playing }) {
+                IconButton(enabled = ready, onClick = {
+                    if (playing) player.pause() else {
+                        playbackOutput.refresh()
+                        player.start()
+                        playbackOutput.reportOutput()
+                    }
+                    playing = !playing
+                }) {
                     Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause playback" else "Play recording")
                 }
                 Text(recording.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -258,6 +303,7 @@ private fun SetPlayer(recording: LibraryRecording, onClose: () -> Unit, onError:
                 { position = it.toLong(); player.seekTo(it.toInt()) }, enabled = ready,
                 valueRange = 0f..duration.coerceAtLeast(1).toFloat())
             Text("${elapsedText(position)} / ${elapsedText(duration)}", style = MaterialTheme.typography.labelSmall)
+            Text("System route: $output", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
         }
     }
 }

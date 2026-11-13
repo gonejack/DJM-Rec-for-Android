@@ -177,13 +177,15 @@ object RecordingOutputManager {
         }
     }.getOrDefault(RecoveryResult.FAILED)
 
+    @Suppress("DEPRECATION") // The URI flag also supports Android 10 (API 29).
     private fun pendingOutputs(context: Context): List<Pair<Uri, String>> {
         val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME)
         val selection = "${MediaStore.Audio.Media.IS_PENDING}=1 AND " +
             "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?"
         val result = mutableListOf<Pair<Uri, String>>()
+        // A SQL predicate alone does not opt in to rows hidden by MediaStore's pending filter.
         context.contentResolver.query(
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            MediaStore.setIncludePending(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI),
             projection,
             selection,
             arrayOf("$RELATIVE_PATH%"),

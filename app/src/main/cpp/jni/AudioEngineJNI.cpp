@@ -1,8 +1,11 @@
 #include <jni.h>
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
 #include <utility>
+#include <android/log.h>
+#include <libusb.h>
 
 #include "../UsbAudioEngine.h"
 
@@ -20,6 +23,67 @@ std::string jstringToStdString(JNIEnv* env, jstring jStr) {
 } // namespace
 
 extern "C" {
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_usb_UsbAudioDriver_restoreSystemAudio(
+    JNIEnv* env, jobject, jint fd, jint controlInterface, jintArray preservedCaptureInterfaces) {
+    const jsize count = preservedCaptureInterfaces ? env->GetArrayLength(preservedCaptureInterfaces) : 0;
+    if (count > 3) return JNI_FALSE;
+    std::vector<jint> preserved(static_cast<size_t>(count));
+    if (count > 0) {
+        env->GetIntArrayRegion(preservedCaptureInterfaces, 0, count, preserved.data());
+        if (env->ExceptionCheck()) return JNI_FALSE;
+        for (const auto interfaceNumber : preserved) {
+            if (interfaceNumber < 1 || interfaceNumber > 3) return JNI_FALSE;
+        }
+    }
+    libusb_context* context = nullptr;
+    libusb_init_option option{};
+    option.option = LIBUSB_OPTION_NO_DEVICE_DISCOVERY;
+    int rc = libusb_init_context(&context, &option, 1);
+    if (rc != LIBUSB_SUCCESS) return JNI_FALSE;
+    libusb_device_handle* handle = nullptr;
+    rc = libusb_wrap_sys_device(context, static_cast<intptr_t>(fd), &handle);
+    if (rc == LIBUSB_SUCCESS) {
+        libusb_device_descriptor descriptor{};
+        rc = libusb_get_device_descriptor(libusb_get_device(handle), &descriptor);
+        if (rc == LIBUSB_SUCCESS &&
+            (descriptor.idVendor != 0x0BDA || descriptor.idProduct != 0x4F26 || controlInterface != 0)) {
+            rc = LIBUSB_ERROR_NOT_SUPPORTED;
+        }
+        if (rc == LIBUSB_SUCCESS) {
+            // Reparse every available stream so the system card includes playback formats.
+            // During capture, usbfs keeps the selected inputs; the kernel skips those and
+            // binds the outputs. Playback then survives even if Android kills our process.
+            for (int interfaceNumber = 1; interfaceNumber <= 5; ++interfaceNumber) {
+                if (std::find(preserved.begin(), preserved.end(), interfaceNumber) != preserved.end()) continue;
+                const int active = libusb_kernel_driver_active(handle, interfaceNumber);
+                if (active == 1) {
+                    const int detached = libusb_detach_kernel_driver(handle, interfaceNumber);
+                    if (detached != LIBUSB_SUCCESS && rc == LIBUSB_SUCCESS) rc = detached;
+                } else if (active < 0 && rc == LIBUSB_SUCCESS) {
+                    rc = active;
+                }
+            }
+            const int active = libusb_kernel_driver_active(handle, controlInterface);
+            if (active == 1) {
+                const int detached = libusb_detach_kernel_driver(handle, controlInterface);
+                if (detached != LIBUSB_SUCCESS && rc == LIBUSB_SUCCESS) rc = detached;
+            } else if (active < 0 && rc == LIBUSB_SUCCESS) {
+                rc = active;
+            }
+            // Always attempt to return ownership even if an earlier detach failed.
+            const int attached = libusb_attach_kernel_driver(handle, controlInterface);
+            if (rc == LIBUSB_SUCCESS) rc = attached;
+        }
+        __android_log_print(rc == LIBUSB_SUCCESS ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
+            "UsbAudioDriver", "CB5 system driver rebind: preserved capture interfaces=%zu result=%s",
+            preserved.size(), libusb_error_name(rc));
+        libusb_close(handle);
+    }
+    libusb_exit(context);
+    return rc == LIBUSB_SUCCESS ? JNI_TRUE : JNI_FALSE;
+}
 
 JNIEXPORT void JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_setRecordingGainDb(
