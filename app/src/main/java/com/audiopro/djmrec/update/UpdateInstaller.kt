@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.FileProvider
+import com.audiopro.djmrec.BuildConfig
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -121,7 +122,7 @@ object UpdateInstaller {
         } else {
             packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
         } ?: throw IOException("Downloaded file is not a valid APK")
-        if (info.packageName != "com.audiopro.djmrec" || info.versionName != expectedVersion) {
+        if (info.packageName != BuildConfig.APPLICATION_ID || info.versionName != expectedVersion) {
             apk.delete()
             throw IOException("Downloaded APK does not match DJM REC $expectedVersion")
         }

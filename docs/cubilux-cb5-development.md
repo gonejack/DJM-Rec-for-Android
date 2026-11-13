@@ -9,8 +9,38 @@
 1. 选择同一张 Cubilux CB5 声卡上的 **MIC1 / MIC2 / Line In**，录音准确绑定所选输入。
 2. 支持三路输入同时录音，并处理多端点的时间对齐。
 
-目前完成了硬件检查、代码分析和本交接记录；**功能代码尚未修改**。原机器没有 Android SDK，
-用户决定换机器开发。本次未安装 SDK，也未执行 Android 构建或录音实测。
+最初交接仅完成硬件检查与代码分析。2026-11-13 在新机器接手后，已实现第一阶段的
+**单路输入选择与精确 USB 接口绑定**，第二阶段的三路同时采集与对齐尚未实现。
+以下硬件资料仍来自原机器；代码实现不等于 Android + CB5 实录验收。
+
+### 本次实现
+
+- 输入以接口号分组，alt 1/2 保留为同一输入的两种格式；CB5 优先选择 24-bit packed PCM。
+- Inputs 在设备授权、描述符检查完成后分别显示 MIC1、Line In、MIC2；录音页与服务标签显示当前输入。
+  优先使用 Android 的接口名称，缺失时仅为 VID/PID 为 `0x0BDA/0x4F26` 的设备使用已确认的后备映射。
+- 选择按 VID/PID 保存接口号；USB 连接路径只用于本次连接定位。
+  **同型号设备共用端口偏好**，同时连接多张卡时必须在 Inputs 中按当前设备条目选择，
+  不使用保存的旧路径猜测物理设备，也未实现按序列号分别保存偏好。
+  保存的接口消失时要求重新选择，不静默改采其他接口。
+- 同设备内切换也会停止监控、等待 native 关闭及旧连接释放，再检查并打开新接口、恢复监控。
+  录制、暂停、准备、保存和直播期间维持输入锁定。
+- 多输入设备强制走 raw USB；录音与监控使用相同的接口/alt/端点/时钟参数，
+  忽略强制 Android capture 与 DJM-REC 端口模式，打开失败直接报错。
+- GET_RANGE 只查询所选输入的 Clock Source，不合并 Android 的设备级采样率列表。
+  修正 UAC2 的 CUR/RANGE 请求码为 `0x01/0x02`，方向放在 bmRequestType，
+  参照 [Linux UAC2 定义](https://github.com/torvalds/linux/blob/master/include/linux/usb/audio-v2.h)。
+  CB5 在 native 打开时必须读回所请求频率，无法验证则失败；GET_RANGE 不可用时会尝试 48 kHz，
+  仍须通过读回校验才允许启动。
+- 修正解析器误返回播放格式的问题；停止时回到 alt 0，只释放成功占用的采集接口。
+  Kotlin 不再为打开新句柄而擅自关闭旧采集连接。
+- 新增真实 930 字节描述符回归测试及 UAC2 范围解析测试；未复制或更改硬件样本。
+  原 Pioneer/单流多声道逻辑继续使用既有 profile 和处理管线。
+
+仍需实机验收：各端口独立信号、左右声道、切换/重连、监控转录音、暂停恢复、失败清理。
+本次 `adb devices -l` 未发现已连接的 Android 设备，因此未安装 APK 或执行录音实测。
+本次 `./gradlew lintDebug testDebugUnitTest assembleDebug --console=plain` 已通过，覆盖 136 个 JVM 测试、
+Lint 和 ARM64 native/Debug APK 构建；其中新增 9 个 JVM 回归测试。`git diff --check` 已通过。
+独立 native 测试的宿主编译命令本次未收到 IDE 返回，不能计为通过。
 
 关键结论：**CB5 提供三个独立的双声道 USB 采集流，没有提供一条合并的 6 声道流。**
 项目已有的 Advanced mode 处理单个接口内的多声道数据，不能直接用于 CB5 的三路输入。
@@ -86,7 +116,7 @@
 文件只含 configuration 及其子描述符，不含 18 字节的 device descriptor；项目解析器可以解析这种输入。
 名称由同一设备的 IORegistry 接口信息补充。没有将包含本机其他进程信息的完整 IORegistry 转储加入仓库。
 
-## 当前代码为什么不能选择三路输入
+## 接手前代码为什么不能选择三路输入（历史分析）
 
 | 位置 | 当前行为 / 后续修改入口 |
 | --- | --- |
@@ -102,7 +132,7 @@
 | [UsbAudioEngine.cpp](../app/src/main/cpp/UsbAudioEngine.cpp)、[TrackBus.h](../app/src/main/cpp/TrackBus.h) | 主文件固定取一组立体声；Advanced mode 对同一流的全部通道分轨，没有多端点对齐层。 |
 | [Multitrack.kt](../app/src/main/java/com/audiopro/djmrec/audio/Multitrack.kt)、[MultitrackState.kt](../app/src/main/java/com/audiopro/djmrec/ui/MultitrackState.kt) | 相邻通道成对，最多 32 通道/16 组；普通设备以 USB 通道编号命名，后续需要实际输入名称映射。 |
 
-按当前选择规则处理这份描述符，会选中 **MIC1：接口 1 / alt 2 / `0x81` / 2ch / 24 bit / 3 字节**。
+按接手前的自动选择规则处理这份描述符，会选中 **MIC1：接口 1 / alt 2 / `0x81` / 2ch / 24 bit / 3 字节**。
 这是对选择策略的推导，不是 Android 实录结果；如果实际走 AAudio，还会受到 Android 系统输入路由影响。
 
 仅把选择规则改成“优先更多声道”解决不了 CB5：它没有任何 6 声道的录音 alt。
@@ -112,15 +142,17 @@
 
 ### 第一阶段：选择单路输入并准确绑定
 
-- [ ] 以接口号对采集候选分组，每个接口再选择支持的 alt / PCM 格式。将三个输入与格式选项分开建模。
-- [ ] 读取 `UsbInterface.name` 或 USB 字符串描述符作为名称，CB5 已实测映射可用作该型号的后备名称。
-- [ ] 在 Inputs 中增加 MIC1 / MIC2 / Line In 选项；记录、暂停、连接和直播期间保持现有设置锁定规则。
-- [ ] 保存选择，至少包含 VID、PID 和接口号；区分临时连接路径与持久的输入身份。多张同型号设备的策略需明确。
-- [ ] 切换前停止原采集、等待 native 完全关闭、释放旧连接，再打开新输入并恢复监控；同一设备内的接口变化也必须触发更新。
-- [ ] 对需要明确选接口的设备使用 raw USB isochronous 采集，绑定确切 interface / alt / endpoint。
+以下勾选表示代码已实现，实录验收仍待完成。
+
+- [x] 以接口号对采集候选分组，每个接口再选择支持的 alt / PCM 格式。将三个输入与格式选项分开建模。
+- [x] 读取 `UsbInterface.name` 或 USB 字符串描述符作为名称，CB5 已实测映射可用作该型号的后备名称。
+- [x] 在 Inputs 中增加 MIC1 / MIC2 / Line In 选项；记录、暂停、连接和直播期间保持现有设置锁定规则。
+- [x] 保存选择，至少包含 VID、PID 和接口号；区分临时连接路径与持久的输入身份。多张同型号设备的策略需明确。
+- [x] 切换前停止原采集、等待 native 完全关闭、释放旧连接，再打开新输入并恢复监控；同一设备内的接口变化也必须触发更新。
+- [x] 对需要明确选接口的设备使用 raw USB isochronous 采集，绑定确切 interface / alt / endpoint。
   无法打开时报告错误，不能静默落回 AAudio 的其他输入。检查现有强制 Android capture 设置的兼容行为。
-- [ ] 为所选接口解析其 terminal 与 Clock Source；读取并验证该输入自己的可用采样率，不复用 MIC1 的时钟结果。
-- [ ] 检查 GET/SET 请求、PCM 解码、停止时回到 alt 0，以及失败时只释放已成功 claim 的资源。
+- [x] 为所选接口解析其 terminal 与 Clock Source；读取并验证该输入自己的可用采样率，不复用 MIC1 的时钟结果。
+- [ ] 实机检查 GET/SET 请求、PCM 解码、停止时回到 alt 0，以及失败时只释放已成功 claim 的资源。相关代码已检查，硬件路径尚未验收。
 
 第一阶段验收：选择 Line In 时只采集接口 2 / `0x82`；切换到 MIC2 时改为接口 3 / `0x83`。
 通过给每个物理输入独立送信号验证声音来源，而不只检查界面名称或参数。
@@ -165,18 +197,18 @@
 | 工具 | 当前配置 |
 | --- | --- |
 | JDK | 17（CI 配置） |
-| Gradle | wrapper 8.13 |
-| Android Gradle Plugin | 8.13.2 |
-| Kotlin / Compose compiler plugin | 2.3.20 |
+| Gradle | wrapper 9.9.0（接手时已升级） |
+| Android Gradle Plugin | 9.5.1，内置 Kotlin（接手时已升级） |
+| Compose compiler plugin | 2.4.21（接手时已升级） |
 | Android SDK | compileSdk 35；minSdk 29；targetSdk 34 |
-| Android NDK | `26.1.10909125` |
+| Android NDK | `28.2.13676358`（r28c，默认支持 16 KB ELF 对齐） |
 | CMake | `3.22.1` |
 | APK ABI | `arm64-v8a` |
 
 安装 SDK 时可包含：
 
 ```sh
-sdkmanager "platform-tools" "platforms;android-35" "ndk;26.1.10909125" "cmake;3.22.1"
+sdkmanager "platform-tools" "platforms;android-35" "ndk;28.2.13676358" "cmake;3.22.1"
 ```
 
 配置 `ANDROID_HOME` 或本机 `local.properties` 中的 `sdk.dir`，使用 JDK 17，并完成 SDK 许可证接受。
@@ -190,5 +222,12 @@ chmod +x gradlew
 ./gradlew lintDebug testDebugUnitTest assembleDebug --console=plain
 ```
 
-本交接不代表以上测试已经通过。下一步从第一阶段的输入接口模型和描述符测试开始，再完成单接口绑定，
-最后实现多端点采集与对齐。
+16 KB 对齐修复（2026-11-13）：NDK 升级到 r28c，并同步 CI/release 工作流。
+重新执行 Lint、JVM 测试和 Debug 构建通过。直接解析最终 APK 的 ELF/ZIP 头验证：
+`libdjmrec_audio.so`、`libc++_shared.so`、`libandroidx.graphics.path.so` 的所有 LOAD 段均为
+16384 字节对齐，RELRO 与未压缩库的 ZIP 数据偏移也通过 16 KB 校验。
+校验使用临时 Gradle init 任务；未执行 16 KB 设备上的运行测试。
+参照 [Android 16 KB 页大小指南](https://developer.android.com/guide/practices/page-sizes)。
+
+代码交付后应先在 Android 实机连接 CB5，按第一阶段验收步骤为三个物理端口送入不同信号，
+核实端点绑定与声音来源，再进入第二阶段的多端点共享会话和时间对齐。

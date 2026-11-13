@@ -4,8 +4,8 @@ package com.audiopro.djmrec.usb
  * Minimal, spec-accurate walker over the raw USB configuration descriptor blob returned by
  * [android.hardware.usb.UsbDeviceConnection.getRawDescriptors]. We only need this to answer
  * "which alternate setting is the real audio streaming interface, and what does it advertise
- * (channels / bit depth / iso endpoint)?" — actual audio bytes are pulled through AAudio/Oboe,
- * not through raw bulk/iso transfers, so we do not need a full UAC2 stack here.
+ * (channels / bit depth / iso endpoint)?". The selected interface can be captured through
+ * raw libusb isochronous transfers; ordinary system-routed inputs may use AAudio/Oboe.
  *
  * Reference: USB Audio Class 2.0 spec, sections 4.9 (AudioStreaming Interface) and
  * Format Type I Descriptor (Frmts20 spec, table 2-1).
@@ -269,7 +269,8 @@ object UsbAudioDescriptorParser {
         var pendingSampleRates: List<Int> = emptyList()
 
         fun flushInterfaceIfComplete() {
-            if (currentIsAudioStreaming && isPcm && currentInterfaceNumber >= 0 && pendingSubframeSize > 0) {
+            if (currentIsAudioStreaming && isPcm && currentInterfaceNumber >= 0 &&
+                pendingSubframeSize > 0 && pendingIsoInEndpoint != null) {
                 results.add(
                     AudioStreamingInterfaceInfo(
                         interfaceNumber = currentInterfaceNumber,

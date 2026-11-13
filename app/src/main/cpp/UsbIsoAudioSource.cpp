@@ -43,7 +43,8 @@ std::string peakSummary(const std::vector<uint32_t>& pairPeaks) {
 }
 
 constexpr uint8_t kUac2RequestSetCurrent = 0x01;
-constexpr uint8_t kUac2RequestGetCurrent = 0x81;
+// UAC2 CUR is 0x01 in both directions; bmRequestType carries IN/OUT.
+constexpr uint8_t kUac2RequestGetCurrent = 0x01;
 constexpr uint16_t kUac2ClockFrequencyControl = 0x0100;
 constexpr uint8_t kUac1RequestSetCurrent = 0x01;
 constexpr uint16_t kUac1EndpointSamplingFrequencyControl = 0x0100;
@@ -273,6 +274,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
 
     mConfig = config;
     mCallback = std::move(callback);
+    mClaimedCaptureInterface = -1;
     mClaimedPlaybackInterface = -1;
     mPlaybackTransfers.clear();
     mPlaybackFrameRemainder = 0;
@@ -398,6 +400,14 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         }
     }
 
+    // CB5 ports each have a different clock source. Do not label an unverified stream
+    // with a guessed rate after a failed control request.
+    if (config.vendorId == 0x0BDA && config.productId == 0x4F26 &&
+        mConfirmedClockRate != config.requestedSampleRate) {
+        stop();
+        return "Could not verify the selected CB5 input's requested sample rate";
+    }
+
     rc = libusb_claim_interface(mHandle, config.interfaceNumber);
     if (rc != LIBUSB_SUCCESS) {
         restorePioneerRecordingRoute();
@@ -417,13 +427,17 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         return libusbErrorString("libusb_claim_interface", rc);
     }
 
+    mClaimedCaptureInterface = config.interfaceNumber;
+
     // Standard USB control transfer (SET_INTERFACE) selecting the alt setting whose isochronous
     // endpoint is actually active -- UAC2 devices sit on alt setting 0 (zero-bandwidth, no
     // endpoint) until told otherwise.
     rc = libusb_set_interface_alt_setting(mHandle, config.interfaceNumber, config.alternateSetting);
     if (rc != LIBUSB_SUCCESS) {
         restorePioneerRecordingRoute();
+        libusb_set_interface_alt_setting(mHandle, config.interfaceNumber, 0);
         libusb_release_interface(mHandle, config.interfaceNumber);
+        mClaimedCaptureInterface = -1;
         if (mClaimedPlaybackInterface >= 0) {
             libusb_set_interface_alt_setting(mHandle, mClaimedPlaybackInterface, 0);
             libusb_release_interface(mHandle, mClaimedPlaybackInterface);
@@ -1230,8 +1244,12 @@ void UsbIsoAudioSource::stop() {
 
     if (mHandle) {
         restorePioneerRecordingRoute();
-        libusb_set_interface_alt_setting(mHandle, mConfig.interfaceNumber, 0);
-        libusb_release_interface(mHandle, mConfig.interfaceNumber);
+        const int captureInterface = mClaimedCaptureInterface;
+        if (captureInterface >= 0) {
+            libusb_set_interface_alt_setting(mHandle, captureInterface, 0);
+            libusb_release_interface(mHandle, captureInterface);
+            mClaimedCaptureInterface = -1;
+        }
         // DJM-900NXS2's playback (OUT) endpoint lives on the same interface+alt-setting as
         // capture (both playbackInterface and config.interfaceNumber are 0), so the release
         // immediately above already released it -- a second release/alt-setting call on the same
@@ -1240,7 +1258,7 @@ void UsbIsoAudioSource::stop() {
         // that: a crash traced to a destroyed mutex inside libusb_close() surfaced right after
         // this dual-claim path was introduced, and removing the redundant call is a safe
         // simplification regardless of whether it was the actual cause.
-        if (mClaimedPlaybackInterface >= 0 && mClaimedPlaybackInterface != mConfig.interfaceNumber) {
+        if (mClaimedPlaybackInterface >= 0 && mClaimedPlaybackInterface != captureInterface) {
             libusb_set_interface_alt_setting(mHandle, mClaimedPlaybackInterface, 0);
             libusb_release_interface(mHandle, mClaimedPlaybackInterface);
         }

@@ -159,6 +159,7 @@ private:
 
     libusb_context* mContext = nullptr;
     libusb_device_handle* mHandle = nullptr;
+    int mClaimedCaptureInterface = -1;
     int mClaimedClockControlInterface = -1;
     int mClaimedPlaybackInterface = -1;
     const PioneerMixerProfile* mMixerProfile = nullptr;

@@ -27,9 +27,9 @@ val twitchClientId = providers.environmentVariable("TWITCH_CLIENT_ID").orNull
 android {
     namespace = "com.audiopro.djmrec"
     compileSdk = 35
-    // Pinned so CI (and every dev machine) builds native code against the exact same
-    // NDK — avoids "works locally, fails/behaves differently in CI" native-build drift.
-    ndkVersion = "26.1.10909125"
+    // r28c aligns native libraries (including libc++_shared.so) for 16 KB page devices.
+    // Keep CI and release builds pinned to this same toolchain.
+    ndkVersion = "28.2.13676358"
 
     val releaseSigning = keystore?.let { properties ->
         signingConfigs.create("release") {
@@ -41,7 +41,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.audiopro.djmrec"
+        applicationId = "com.audiopro.djmrec.cb5"
         minSdk = 29
         targetSdk = 34
         versionCode = appVersion.getProperty("VERSION_CODE").toInt()
@@ -102,6 +102,9 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // Reuse the captured hardware descriptors as JVM regression fixtures.
+    sourceSets.getByName("test").resources.directories.add(rootProject.file("docs/hardware").absolutePath)
 
     testOptions {
         // Compose Preview reuses the unit-test resource APK for XML resources and themes.

@@ -45,11 +45,11 @@ fun InputPicker(viewModel: MainViewModel, onDismiss: () -> Unit) {
             if (inputs.isEmpty()) item {
                 Text("No USB devices detected. Connect the PC/Mac audio port using a data cable and enable USB host/OTG if your phone requires it.")
             }
-            items(inputs, key = { it.deviceName }) { input ->
-                val selected = input.deviceName == device?.deviceName
+            items(inputs, key = { it.selectionKey }) { input ->
+                val selected = input.matches(device)
                 Surface(shape = RoundedCornerShape(16.dp), tonalElevation = if (selected) 4.dp else 1.dp) {
                     Row(Modifier.fillMaxWidth().clickable(enabled = !locked && input.captureCandidate && !selected) {
-                        viewModel.selectInput(input.deviceName)
+                        viewModel.selectInput(input.deviceName, input.interfaceNumber)
                         onDismiss()
                     }.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {

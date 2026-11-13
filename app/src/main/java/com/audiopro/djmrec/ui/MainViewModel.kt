@@ -70,22 +70,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val connectionNotice = usbAudioManager.connectionNotice
     fun refreshInputs() = usbAudioManager.refreshInputs()
 
-    fun selectInput(deviceName: String) {
+    fun selectInput(deviceName: String, interfaceNumber: Int? = null) {
         if (saving.value || liveStreamState.value.isActive ||
             _recordingState.value is RecordingState.Recording || _recordingState.value is RecordingState.Paused ||
-            _recordingState.value is RecordingState.Preparing || deviceState.value?.deviceName == deviceName) return
+            _recordingState.value is RecordingState.Preparing) return
+        val current = deviceState.value
+        if (current?.deviceName == deviceName &&
+            (interfaceNumber == null || current.streamingInterfaceNumber == interfaceNumber)) return
         val service = boundService ?: return
         _recordingState.value = RecordingState.Preparing
         viewModelScope.launch {
             if (service.state.value is RecordingState.Monitoring || service.state.value is RecordingState.Error) {
                 sendCommand(RecordingService.ACTION_STOP)
-                if (withTimeoutOrNull(5_000L.milliseconds) { service.state.first { it is RecordingState.Idle } } == null) {
+                if (withTimeoutOrNull(5_000L.milliseconds) {
+                    service.state.first { it is RecordingState.Idle }
+                    while (!service.isCaptureClosed) delay(25L.milliseconds)
+                    true
+                } == null) {
                     _recordingState.value = RecordingState.Error("Input change timed out. Reconnect your device.")
                     return@launch
                 }
             }
             _recordingState.value = RecordingState.Idle
-            if (!usbAudioManager.selectDevice(deviceName))
+            if (!usbAudioManager.selectDevice(deviceName, interfaceNumber))
                 _recordingState.value = RecordingState.Error("Input unavailable. Refresh the device list.")
         }
     }
@@ -406,7 +413,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     activeDeviceKey = null
                     return@collect
                 }
-                val key = "${device.deviceName}:${device.vendorId}:${device.productId}"
+                val key = "${device.deviceName}:${device.vendorId}:${device.productId}:${device.streamingInterfaceNumber}"
                 if (key == activeDeviceKey) return@collect
                 activeDeviceKey = key
                 val pairKey = "channel_pair_${device.vendorId}_${device.productId}"
@@ -673,7 +680,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // DJM-REC-equivalent path: the top digital send/return USB port exposes stereo audio.
-        if (_djmrecPortMode.value) {
+        if (_djmrecPortMode.value && deviceState.value?.requiresExplicitInterfaceSelection != true) {
             tryDjmrecPortCapture(context)
             return
         }
@@ -687,7 +694,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
-            val androidCapture = device.requiresIsoCapture && _forceAndroidCapture.value
+            val androidCapture = device.useAndroidCapture(_forceAndroidCapture.value)
             val captureBitDepth = if (androidCapture) 16 else device.bitResolution
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
             putExtra(RecordingService.EXTRA_BIT_DEPTH, captureBitDepth)
@@ -730,7 +737,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val hadIsoHandle = intent.hasExtra(RecordingService.EXTRA_USB_FD)
         if (startForegroundServiceSafely(context, intent, hadIsoHandle)) {
-            boundService?.setDeviceLabel(device.productName)
+            boundService?.setDeviceLabel(device.captureLabel)
         }
     }
 
@@ -744,7 +751,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sampleRate = device.preferredSampleRate
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_MONITOR
-            val androidCapture = device.requiresIsoCapture && _forceAndroidCapture.value
+            val androidCapture = device.useAndroidCapture(_forceAndroidCapture.value)
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
             putExtra(RecordingService.EXTRA_BIT_DEPTH, if (androidCapture) 16 else device.bitResolution)
 
@@ -784,7 +791,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val hadIsoHandle = intent.hasExtra(RecordingService.EXTRA_USB_FD)
         if (startForegroundServiceSafely(context, intent, hadIsoHandle)) {
-            boundService?.setDeviceLabel(device.productName)
+            boundService?.setDeviceLabel(device.captureLabel)
             Log.i(TAG, "USB attached: auto-starting live monitor for ${device.productName}")
         }
     }

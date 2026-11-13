@@ -429,6 +429,10 @@ class RecordingService : LifecycleService() {
     @Volatile
     private var sessionOpening = false
 
+    /** Idle alone can precede the completion of an invalidated native open. */
+    val isCaptureClosed: Boolean
+        get() = !sessionOpening && _state.value is RecordingState.Idle
+
     override fun onCreate() {
         super.onCreate()
         setRecordingGainDb(getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("recording_gain_db", 12))

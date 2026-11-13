@@ -36,7 +36,9 @@ data class UsbAudioDeviceInfo(
     val audioManagerDeviceId: Int = -1,
     val hasPermission: Boolean = false,
     /** True if [vendorId] matches a known Pioneer/AlphaTheta USB vendor ID. */
-    val isPioneer: Boolean = false
+    val isPioneer: Boolean = false,
+    /** Physical capture inputs, each with its own alternate PCM formats. */
+    val captureInputs: List<UsbCaptureInput> = emptyList()
 ) {
     val preferredSampleRate: Int
         get() = negotiatedSampleRate.takeIf { it > 0 }
@@ -63,11 +65,23 @@ data class UsbAudioDeviceInfo(
      * Unrouted standard PCM inputs can also use raw capture. All require a supported format
      * and a usable endpoint packet size.
      */
+    val requiresExplicitInterfaceSelection: Boolean get() = captureInputs.size > 1
+
+    val inputName: String?
+        get() = captureInputs.firstOrNull { it.interfaceNumber == streamingInterfaceNumber }?.name
+
+    val captureLabel: String
+        get() = if (requiresExplicitInterfaceSelection) "$productName · $inputName" else productName
+
+    /** Android's device id cannot identify an interface within a multi-input USB device. */
+    fun useAndroidCapture(forceAndroidCapture: Boolean): Boolean =
+        requiresIsoCapture && forceAndroidCapture && !requiresExplicitInterfaceSelection
+
     val requiresIsoCapture: Boolean
-        get() = isochronousInMaxPacketSize > 0 &&
+        get() = requiresExplicitInterfaceSelection || (isochronousInMaxPacketSize > 0 &&
             CaptureFormatPolicy.isSupported(channelCount, subframeSize, bitResolution) &&
             ((pioneerMixerProfile != null && channelCount > 2) || allInOneProfile != null ||
-                channelCount > 2 || audioManagerDeviceId < 0)
+                channelCount > 2 || audioManagerDeviceId < 0))
 }
 
 /** Raw result of walking a single USB Audio Streaming interface's descriptor block. */

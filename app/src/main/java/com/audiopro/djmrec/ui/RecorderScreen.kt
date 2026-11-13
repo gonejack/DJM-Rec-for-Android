@@ -92,7 +92,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
             Box(Modifier.size(8.dp).background(if (device != null) AccentGreen else TextSecondary, CircleShape))
             Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable { inputsOpen = true }.padding(horizontal = 10.dp),
                 verticalArrangement = Arrangement.Center) {
-                Text(device?.productName ?: "Connect your mixer", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                Text(device?.captureLabel ?: "Connect your mixer", maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleMedium)
                 Text(device?.let { "${it.preferredSampleRate / 1000f} kHz / ${it.bitResolution}-bit / USB" }
                     ?: "USB audio input", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
