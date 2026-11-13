@@ -227,8 +227,7 @@ object RecordingOutputManager {
             RecordingFormat.FLAC -> bytes.contentEquals("fLaC".toByteArray())
             // Raw MPEG Layer III stream starts on a frame sync (11 set bits); shine writes
             // no ID3 tag.
-            RecordingFormat.MP3 ->
-                bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0
+            RecordingFormat.MP3 -> bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0
         }
     }.getOrDefault(false)
 

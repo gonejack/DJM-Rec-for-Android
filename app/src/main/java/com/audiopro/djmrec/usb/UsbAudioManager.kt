@@ -536,8 +536,9 @@ class UsbAudioManager(private val context: Context) {
             it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
         }
         val match = usbInputs.firstOrNull { it.address == device.deviceName }
-            ?: usbInputs.filter { it.productName?.toString()?.trim() == device.productName?.trim() }
-                .singleOrNull()
+            ?: usbInputs.singleOrNull {
+                it.productName?.toString()?.trim() == device.productName?.trim()
+            }
 
         return match?.let { it.id to it.sampleRates.toList() }
     }

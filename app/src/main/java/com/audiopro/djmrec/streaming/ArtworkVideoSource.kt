@@ -13,6 +13,7 @@ import android.view.Surface
 import com.pedro.encoder.input.sources.video.VideoSource
 import kotlin.math.min
 import androidx.core.net.toUri
+import androidx.core.graphics.createBitmap
 
 /** User-selected still image source used when DJ only wants to broadcast mixer audio. */
 class ArtworkVideoSource(
@@ -106,7 +107,7 @@ class ArtworkVideoSource(
         // landscape, or 9:16 portrait).
         val outputWidth = if (rotated) height else width
         val outputHeight = if (rotated) width else height
-        val output = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+        val output = createBitmap(outputWidth, outputHeight)
         val canvas = Canvas(output)
         canvas.drawColor(Color.BLACK)
         val scale = min(outputWidth.toFloat() / decoded.width, outputHeight.toFloat() / decoded.height)
@@ -126,7 +127,7 @@ class ArtworkVideoSource(
         // per Android's camera display-orientation math). So the buffer content must sit one
         // inverse rotation away from upright: pre-rotate the finished artwork by -rotation into
         // the capture buffer and the encoder transform yields exactly the upright frame above.
-        val buffer = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val buffer = createBitmap(width, height)
         val bufferCanvas = Canvas(buffer)
         bufferCanvas.drawColor(Color.BLACK)
         val matrix = android.graphics.Matrix().apply {

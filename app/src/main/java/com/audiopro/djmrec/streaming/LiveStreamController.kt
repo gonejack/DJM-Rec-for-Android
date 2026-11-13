@@ -365,7 +365,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
             val bitrate = if (overheating) recordBitrate * OVERHEAT_BITRATE_PERCENT / 100 else recordBitrate
             runCatching { active.setVideoBitrateOnFly(bitrate) }
         }
-        Log.i(TAG, if (overheating) "Overheating: ${OVERHEAT_FPS} fps, reduced bitrate" else "Temperature normal: full quality")
+        Log.i(TAG, if (overheating) "Overheating: $OVERHEAT_FPS fps, reduced bitrate" else "Temperature normal: full quality")
         _state.update { if (it.isActive) it.copy(overheated = overheating) else it }
     }
 

@@ -124,26 +124,27 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
             BoxWithConstraints(Modifier.padding(8.dp)) {
                 val compact = maxHeight < 160.dp
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (device?.recordsSelectedInputs != true || multitrackTracks.isEmpty())
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        val label = when {
-                            saving -> "SAVING"
-                            state is RecordingState.Recording -> "REC"
-                            state is RecordingState.Paused -> "PAUSED"
-                            state is RecordingState.Preparing -> "ARMING"
-                            state is RecordingState.Monitoring -> "MONITORING"
-                            else -> "STANDBY"
+                    if (device?.recordsSelectedInputs != true || multitrackTracks.isEmpty()) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            val label = when {
+                                saving -> "SAVING"
+                                state is RecordingState.Recording -> "REC"
+                                state is RecordingState.Paused -> "PAUSED"
+                                state is RecordingState.Preparing -> "ARMING"
+                                state is RecordingState.Monitoring -> "MONITORING"
+                                else -> "STANDBY"
+                            }
+                            Text(label,
+                                color = if (active) AccentRed else AccentGreen,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                modifier = Modifier.heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }
+                            )
+                            Text(if (multitrackTracks.isNotEmpty()) "MULTITRACK" else if (waveform) "3-BAND" else "METERS",
+                                style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                         }
-                        Text(label,
-                            color = if (active) AccentRed else AccentGreen,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            modifier = Modifier.heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }
-                        )
-                        Text(if (multitrackTracks.isNotEmpty()) "MULTITRACK" else if (waveform) "3-BAND" else "METERS",
-                            style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
                     if (multitrackTracks.isNotEmpty() && !compact) {
                         // Advanced mode: one lane per input pair; the master lane carries the set's meter.
@@ -160,54 +161,54 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     }
     val transport: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        val selectedInputs = device?.takeIf { it.recordsSelectedInputs }?.selectedInterfaceNumbers?.size
-        if (selectedInputs != null) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(elapsedText(elapsed), modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("${format.name} / ${AudioGain.format(gain)}",
-                        style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-                    Text("${multitrackTracks.count { it.armed }} tracks + Mix", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            val selectedInputs = device?.takeIf { it.recordsSelectedInputs }?.selectedInterfaceNumbers?.size
+            if (selectedInputs != null) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(elapsedText(elapsed), modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("${format.name} / ${AudioGain.format(gain)}",
+                            style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                        Text("${multitrackTracks.count { it.armed }} tracks + Mix", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                    }
+                }
+            } else Column {
+                Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
+                val armedTracks = if (multitrackActive) multitrackTracks.count { it.armed } else 0
+                Text("${format.name} / ${AudioGain.format(gain)}" +
+                    if (armedTracks > 0) " / +$armedTracks tracks" else "",
+                    style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            }
+            val reducedMotion = rememberReducedMotion()
+            AnimatedContent(
+                targetState = active,
+                transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
+                label = "transport"
+            ) { transportActive ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (transportActive) {
+                        OutlinedButton(onClick = { if (state is RecordingState.Paused) viewModel.resumeRecording() else viewModel.pauseRecording() },
+                            enabled = !saving, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
+                            Icon(if (state is RecordingState.Paused) Icons.Default.PlayArrow else Icons.Default.Pause, null)
+                            Text(if (state is RecordingState.Paused) "Resume" else "Pause")
+                        }
+                        Button(onClick = { if (confirmStop) stopPrompt = true else viewModel.stopRecording() }, enabled = !saving,
+                            modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
+                            if (saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Stop, null)
+                            Text(if (saving) " Saving" else " Save set")
+                        }
+                    } else {
+                        Button(onClick = viewModel::startRecording, enabled = device != null && state !is RecordingState.Preparing && !saving,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed, contentColor = BackgroundDark)) {
+                            if (state is RecordingState.Preparing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            else Icon(Icons.Default.FiberManualRecord, null)
+                            Text(if (state is RecordingState.Preparing) " Arming input" else " Record set", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
-        } else Column {
-            Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
-            val armedTracks = if (multitrackActive) multitrackTracks.count { it.armed } else 0
-            Text("${format.name} / ${AudioGain.format(gain)}" +
-                if (armedTracks > 0) " / +$armedTracks tracks" else "",
-                style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-        }
-        val reducedMotion = rememberReducedMotion()
-        AnimatedContent(
-            targetState = active,
-            transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
-            label = "transport"
-        ) { transportActive ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (transportActive) {
-                OutlinedButton(onClick = { if (state is RecordingState.Paused) viewModel.resumeRecording() else viewModel.pauseRecording() },
-                    enabled = !saving, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                    Icon(if (state is RecordingState.Paused) Icons.Default.PlayArrow else Icons.Default.Pause, null)
-                    Text(if (state is RecordingState.Paused) "Resume" else "Pause")
-                }
-                Button(onClick = { if (confirmStop) stopPrompt = true else viewModel.stopRecording() }, enabled = !saving,
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                    if (saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Stop, null)
-                    Text(if (saving) " Saving" else " Save set")
-                }
-            } else {
-                Button(onClick = viewModel::startRecording, enabled = device != null && state !is RecordingState.Preparing && !saving,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed, contentColor = BackgroundDark)) {
-                    if (state is RecordingState.Preparing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.FiberManualRecord, null)
-                    Text(if (state is RecordingState.Preparing) " Arming input" else " Record set", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        }
         }
     }
     // Power saving replaces the whole workspace: the waveform/meters leave composition (which
@@ -218,34 +219,34 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
         transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
         label = "powerSave"
     ) { powerSaveOn ->
-    if (powerSaveOn) {
-        PowerSaveOverlay(
-            recording = active,
-            saving = saving,
-            elapsedMillis = elapsed,
-            onStop = {
-                if (confirmStop) stopPrompt = true
-                else { powerSave = false; viewModel.stopRecording() }
-            },
-            onClose = { powerSave = false }
-        )
-    } else BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        if (maxWidth >= 600.dp && maxWidth > maxHeight) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (powerSaveOn) {
+            PowerSaveOverlay(
+                recording = active,
+                saving = saving,
+                elapsedMillis = elapsed,
+                onStop = {
+                    if (confirmStop) stopPrompt = true
+                    else { powerSave = false; viewModel.stopRecording() }
+                },
+                onClose = { powerSave = false }
+            )
+        } else BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            if (maxWidth >= 600.dp && maxWidth > maxHeight) {
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        inputHeader()
+                        Box(Modifier.weight(1f)) { signalPanel() }
+                    }
+                    Column(Modifier.weight(1f).align(Alignment.CenterVertically)) { transport() }
+                }
+            } else {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     inputHeader()
                     Box(Modifier.weight(1f)) { signalPanel() }
+                    transport()
                 }
-                Column(Modifier.weight(1f).align(Alignment.CenterVertically)) { transport() }
-            }
-        } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                inputHeader()
-                Box(Modifier.weight(1f)) { signalPanel() }
-                transport()
             }
         }
-    }
     }
     saved?.let { recording ->
         AlertDialog(onDismissRequest = viewModel::dismissSavedRecording,

@@ -59,10 +59,13 @@ internal class RecordingPlaybackOutput(
         val deviceId = output?.id ?: 0
         if (reportedDeviceId == deviceId) return
         reportedDeviceId = deviceId
-        val label = if (output == null) "System default" else when (output.type) {
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone speaker"
-            AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Phone earpiece"
-            else -> output.productName.toString().ifBlank { "System audio" }
+        val label = when (output) {
+            null -> "System default"
+            else -> when (output.type) {
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone speaker"
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Phone earpiece"
+                else -> output.productName.toString().ifBlank { "System audio" }
+            }
         }
         onOutputChanged(label)
         if (output != null) Log.i(TAG, "System route: $label, id=${output.id}, type=${output.type}")
@@ -82,8 +85,7 @@ internal class RecordingPlaybackOutput(
         // Android often prefixes the USB product with "USB-Audio - ". Do not guess between
         // multiple devices with the same product name.
         return outputs.singleOrNull {
-            recorder.productName.isNotBlank() &&
-                    it.productName.toString().contains(recorder.productName, ignoreCase = true)
+            recorder.productName.isNotBlank() && it.productName.toString().contains(recorder.productName, ignoreCase = true)
         }
     }
 

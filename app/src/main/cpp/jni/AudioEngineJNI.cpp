@@ -467,7 +467,7 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getTrackLevels(JNIEnv* env, jobject /
     float levels[kMaxFloats];
     const int channels = UsbAudioEngine::instance().getTrackLevels(levels, djmrec::TrackBus::kMaxChannels);
     if (channels < 0) return nullptr; // busy: keep the previous reading
-    const jsize count = static_cast<jsize>(channels * djmrec::TrackBus::kLevelStride);
+    const auto count = static_cast<jsize>(channels * djmrec::TrackBus::kLevelStride);
     jfloatArray result = env->NewFloatArray(count);
     if (count > 0) env->SetFloatArrayRegion(result, 0, count, levels);
     return result;

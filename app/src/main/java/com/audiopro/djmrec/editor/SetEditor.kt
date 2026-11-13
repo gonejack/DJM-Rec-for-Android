@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -136,7 +137,7 @@ object SetEditor {
             var total = 0L
             var lastProgress = 0f
             while (true) {
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 val frames = decoder.read(source, BLOCK_FRAMES)
                 if (frames <= 0) break
                 toStereo(source, decoder.channels, stereo, frames)
@@ -200,7 +201,7 @@ object SetEditor {
                 var lastProgress = 0f
                 val endFrame = processor.outputFrames + EditMath.millisToFrames(settings.trimStartMillis, analysis.sampleRate)
                 while (position < endFrame) {
-                    coroutineContext.ensureActive()
+                    currentCoroutineContext().ensureActive()
                     val frames = decoder.read(source, BLOCK_FRAMES)
                     if (frames <= 0) break
                     toStereo(source, decoder.channels, stereo, frames)
