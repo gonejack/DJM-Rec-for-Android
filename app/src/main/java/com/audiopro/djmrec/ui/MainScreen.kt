@@ -1,6 +1,5 @@
 package com.audiopro.djmrec.ui
 
-import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +12,6 @@ import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,7 +38,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.DjmRecApplication
-import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.SurfaceDark
@@ -48,9 +45,6 @@ import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
 import com.audiopro.djmrec.ui.theme.DjmRecMotion
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
-import com.audiopro.djmrec.update.AppUpdate
-import com.audiopro.djmrec.update.UpdateChecker
-import androidx.core.net.toUri
 
 private enum class Destination(val route: String, val label: String, val icon: ImageVector) {
     RECORDING("record", "Record", Icons.Filled.FiberManualRecord),
@@ -67,7 +61,6 @@ fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val application = context.applicationContext as DjmRecApplication
     val recoveryNotice by application.recoveryNotice.collectAsState()
-    val recordingState by viewModel.recordingState.collectAsState()
     val liveState by viewModel.liveStreamState.collectAsState()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
     // Fullscreen camera console takes over the whole window (no bars); closing it from the
@@ -78,11 +71,6 @@ fun MainScreen(viewModel: MainViewModel) {
     // Scoped to the Record tab so a deep link can't leave other screens without chrome.
     val chromeless = cameraMode ||
         (viewModel.powerSaveActive.value && selectedDestination == Destination.RECORDING)
-    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
-
-    LaunchedEffect(Unit) {
-        availableUpdate = UpdateChecker.check(context.applicationContext)
-    }
 
     // djmrec://<route> deep links land here and navigate once the shell is up.
     val pendingRoute by viewModel.pendingRoute.collectAsState()
@@ -100,34 +88,6 @@ fun MainScreen(viewModel: MainViewModel) {
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = application::dismissRecoveryNotice) { Text("OK") }
-            }
-        )
-    }
-
-    val mayPromptForUpdate = selectedDestination == Destination.SETTINGS && recoveryNotice == null &&
-        recordingState !is RecordingState.Recording &&
-        recordingState !is RecordingState.Paused &&
-        recordingState !is RecordingState.Preparing
-    if (availableUpdate != null && mayPromptForUpdate) {
-        val update = availableUpdate!!
-        AlertDialog(
-            onDismissRequest = {
-                UpdateChecker.defer(context, update.tag)
-                availableUpdate = null
-            },
-            title = { Text("DJM REC ${update.version} available") },
-            text = { Text("A newer release is ready on GitHub. Recording will never be interrupted for an update.") },
-            confirmButton = {
-                Button(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, update.releaseUrl.toUri()))
-                    availableUpdate = null
-                }) { Text("View update") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    UpdateChecker.defer(context, update.tag)
-                    availableUpdate = null
-                }) { Text("Later") }
             }
         )
     }

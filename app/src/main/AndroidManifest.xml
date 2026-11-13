@@ -14,7 +14,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 13+ runtime notification permission for the persistent recording notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Onboarding: lets DJM REC put the phone into Do Not Disturb while recording

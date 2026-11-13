@@ -26,7 +26,7 @@ val twitchClientId = providers.environmentVariable("TWITCH_CLIENT_ID").orNull
 
 android {
     namespace = "com.audiopro.djmrec"
-    compileSdk = 35
+    compileSdk = 37
     // r28c aligns native libraries (including libc++_shared.so) for 16 KB page devices.
     // Keep CI and release builds pinned to this same toolchain.
     ndkVersion = "28.2.13676358"
@@ -43,7 +43,7 @@ android {
     defaultConfig {
         applicationId = "com.audiopro.djmrec.cb5"
         minSdk = 29
-        targetSdk = 34
+        targetSdk = 37
         versionCode = appVersion.getProperty("VERSION_CODE").toInt()
         versionName = appVersion.getProperty("VERSION_NAME")
 

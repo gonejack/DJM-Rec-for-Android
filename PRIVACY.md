@@ -32,7 +32,7 @@ or stream them yourself.
 | Camera (optional) | Only for video recording and video livestreams, when you turn them on. |
 | Notifications | To show the recording status while recording in the background. |
 | Do Not Disturb access (optional) | To silence notifications during a set, if you enable it. |
-| Internet | For livestreaming and checking or downloading app updates from GitHub. |
+| Internet | For livestreaming to the streaming service you select. |
 
 ## Local diagnostics
 

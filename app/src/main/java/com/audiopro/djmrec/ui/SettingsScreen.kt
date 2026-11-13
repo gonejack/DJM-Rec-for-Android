@@ -3,8 +3,6 @@
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
@@ -16,17 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.ui.theme.TextSecondary
-import com.audiopro.djmrec.update.AppUpdate
-import com.audiopro.djmrec.update.UpdateCheckResult
-import com.audiopro.djmrec.update.UpdateChecker
-import com.audiopro.djmrec.update.UpdateInstaller
-import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
@@ -39,86 +30,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val preRecord by viewModel.preRecord.collectAsState()
     val autoStopMinutes by viewModel.silenceAutoStopMinutes.collectAsState()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
-    var pendingPermissionUpdate by remember { mutableStateOf<AppUpdate?>(null) }
-    var installRequest by remember { mutableStateOf<AppUpdate?>(null) }
-    var updateBusy by remember { mutableStateOf(false) }
-    var updateStatus by remember { mutableStateOf<String?>(null) }
-    var updateError by remember { mutableStateOf(false) }
-    val unknownSourcesPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        val update = pendingPermissionUpdate
-        pendingPermissionUpdate = null
-        if (update != null && context.packageManager.canRequestPackageInstalls()) {
-            installRequest = update
-        } else if (update != null) {
-            updateError = true
-            updateStatus = "Install permission was not granted."
-        }
-    }
-
-    LaunchedEffect(installRequest?.tag) {
-        val update = installRequest ?: return@LaunchedEffect
-        updateBusy = true
-        updateError = false
-        updateStatus = "Downloading DJM REC ${update.version}..."
-        runCatching { UpdateInstaller.download(context.applicationContext, update) }
-            .onSuccess { apk ->
-                updateStatus = "Download verified. Opening Android installer..."
-                runCatching { UpdateInstaller.install(context, apk) }
-                    .onFailure { error ->
-                        updateError = true
-                        updateStatus = error.message ?: "Could not open Android installer"
-                    }
-            }
-            .onFailure { error ->
-                updateError = true
-                updateStatus = error.message ?: "Update download failed"
-            }
-        updateBusy = false
-        installRequest = null
-    }
-
-    fun checkForUpdates() {
-        scope.launch {
-            updateBusy = true
-            updateError = false
-            updateStatus = "Checking GitHub for updates..."
-            when (val result = UpdateChecker.checkNow(context.applicationContext)) {
-                is UpdateCheckResult.Available -> {
-                    availableUpdate = result.update
-                    updateStatus = "DJM REC ${result.update.version} is available."
-                }
-                UpdateCheckResult.Current -> {
-                    availableUpdate = null
-                    updateStatus = "DJM REC is up to date."
-                }
-                is UpdateCheckResult.Failed -> {
-                    updateError = true
-                    updateStatus = result.message
-                }
-            }
-            updateBusy = false
-        }
-    }
-
-    fun requestInstall(update: AppUpdate) {
-        if (context.packageManager.canRequestPackageInstalls()) {
-            installRequest = update
-        } else {
-            pendingPermissionUpdate = update
-            updateStatus = "Allow DJM REC to install updates, then return here."
-            unknownSourcesPermission.launch(
-                Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}")
-                )
-            )
-        }
-    }
-
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Capture", style = MaterialTheme.typography.titleLarge)
@@ -138,9 +49,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Text("Background recording", style = MaterialTheme.typography.titleLarge)
         Text("Keep the persistent notification enabled. Allow background battery use in Android settings for long sets. Force-stop, reboot or disconnecting USB still ends capture.", color = TextSecondary)
         OutlinedButton(onClick = {
-            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,"package:${context.packageName}".toUri()))
         }, modifier = Modifier.fillMaxWidth()) { Text("Android app settings") }
-        Text("App updates", style = MaterialTheme.typography.titleLarge)
+        Text("About", style = MaterialTheme.typography.titleLarge)
         Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
             Column(Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -150,32 +61,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
-                updateStatus?.let { status ->
-                    Text(
-                        status,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (updateError) MaterialTheme.colorScheme.error else TextSecondary
-                    )
-                }
-                if (updateBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                OutlinedButton(
-                    onClick = ::checkForUpdates,
-                    enabled = !updateBusy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                ) { Text(if (updateBusy) "Please wait" else "Check for updates") }
-                availableUpdate?.let { update ->
-                    Button(
-                        onClick = { requestInstall(update) },
-                        enabled = !updateBusy,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    ) { Text("Download & install ${update.version}") }
-                    Text(
-                        "Download is verified before Android asks you to confirm installation.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
             }
         }
     }

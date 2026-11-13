@@ -200,7 +200,7 @@ Lint 和 ARM64 native/Debug APK 构建；其中新增 9 个 JVM 回归测试。`
 | Gradle | wrapper 9.9.0（接手时已升级） |
 | Android Gradle Plugin | 9.5.1，内置 Kotlin（接手时已升级） |
 | Compose compiler plugin | 2.4.21（接手时已升级） |
-| Android SDK | compileSdk 35；minSdk 29；targetSdk 34 |
+| Android SDK | compileSdk 37；minSdk 29；targetSdk 37 |
 | Android NDK | `28.2.13676358`（r28c，默认支持 16 KB ELF 对齐） |
 | CMake | `3.22.1` |
 | APK ABI | `arm64-v8a` |
@@ -208,7 +208,7 @@ Lint 和 ARM64 native/Debug APK 构建；其中新增 9 个 JVM 回归测试。`
 安装 SDK 时可包含：
 
 ```sh
-sdkmanager "platform-tools" "platforms;android-35" "ndk;28.2.13676358" "cmake;3.22.1"
+sdkmanager "platform-tools" "platforms;android-37.0" "ndk;28.2.13676358" "cmake;3.22.1"
 ```
 
 配置 `ANDROID_HOME` 或本机 `local.properties` 中的 `sdk.dir`，使用 JDK 17，并完成 SDK 许可证接受。

@@ -128,7 +128,7 @@ class RecordingService : LifecycleService() {
         private const val MP3_COPY_BYTES_PER_SECOND = 40_000L
 
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
-        /** `UsbDeviceConnection.getFileDescriptor()`; see [UsbAudioManager.openIsoCaptureHandle]. */
+        /** `UsbDeviceConnection.getFileDescriptor()`; see [com.audiopro.djmrec.usb.UsbAudioManager.openIsoCaptureHandle]. */
         const val EXTRA_USB_FD = "extra_usb_fd"
         const val EXTRA_USB_INTERFACE = "extra_usb_interface"
         const val EXTRA_USB_ALT_SETTING = "extra_usb_alt_setting"
@@ -541,7 +541,7 @@ class RecordingService : LifecycleService() {
 
     /** Pushes the limiter and pre-record settings to the native engine; safe at any time. */
     fun applyCapturePreferences() {
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         AudioEngine.setLimiterEnabled(prefs.getBoolean(PREF_SAFETY_LIMITER, true))
         AudioEngine.setPreRecordEnabled(prefs.getBoolean(PREF_PRE_RECORD, true))
     }
@@ -972,7 +972,7 @@ class RecordingService : LifecycleService() {
             return
         }
         currentFormat = format
-        val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val settings = getSharedPreferences("settings", MODE_PRIVATE)
         AudioEngine.setTrimLeadingSilence(settings.getBoolean(PREF_TRIM_LEADING_SILENCE, true))
         val companion = if (format != RecordingFormat.MP3 && settings.getBoolean(PREF_MP3_COPY, false)) {
             prepareMp3Companion(sessionId)
@@ -1204,7 +1204,7 @@ class RecordingService : LifecycleService() {
     }
 
     /**
-     * Closes the [UsbAudioManager] connection backing native libusb capture, if this session used it.
+     * Closes the [com.audiopro.djmrec.usb.UsbAudioManager] connection backing native libusb capture, if this session used it.
      */
     private fun releaseIsoConnectionIfNeeded() {
         if (isUsbIsoSession) {
@@ -1355,7 +1355,7 @@ class RecordingService : LifecycleService() {
         // re-post the ongoing notification after it has been removed.
         monitorHandler.removeCallbacksAndMessages(null)
         dismissNotification()
-        (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).appTasks.forEach { it.finishAndRemoveTask() }
+        (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).appTasks.forEach { it.finishAndRemoveTask() }
         stopSelf()
     }
 
@@ -1516,7 +1516,7 @@ class RecordingService : LifecycleService() {
      * Without this renewal any recording longer than the timeout would silently die.
      */
     private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         val lock = wakeLock ?: powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "djmrec:recording"
         ).apply {

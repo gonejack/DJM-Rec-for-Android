@@ -78,6 +78,7 @@ import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Loudness targets offered by the editor, with where they fit. */
 private enum class LoudnessTarget(val lufs: Double?, val label: String, val hint: String) {
@@ -412,7 +413,7 @@ private fun rememberPreviewPlayer(recording: LibraryRecording): PreviewPlayer {
         while (preview.playingFrom != null) {
             val position = runCatching { preview.player.currentPosition.toLong() }.getOrDefault(0L)
             if (position >= preview.stopAtMillis) preview.stop()
-            delay(100)
+            delay(100.milliseconds)
         }
     }
     return preview
