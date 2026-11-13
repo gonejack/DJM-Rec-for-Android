@@ -1,4 +1,5 @@
 #include "UsbAudioEngine.h"
+#include "StereoMixRouter.h"
 
 #include <algorithm>
 #include <android/log.h>
@@ -52,7 +53,12 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
     }
+    for (auto& source : mSecondarySources) source->stop();
+    mSecondarySources.clear();
+    mSecondaryQueues.clear();
     releaseCaptureProcessing();
+    for (auto& meter : mMainMeters) meter.reset();
+    mMeterSampleRate.store(sampleRateHint > 0 ? sampleRateHint : 48000, std::memory_order_relaxed);
     mSourceMode = SourceMode::Oboe;
     mTrackChannels = 0; // multitrack needs the raw USB path's full wire frame
 
@@ -121,6 +127,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     }
     mStream = stream;
     mFormat.sampleRate = mStream->getSampleRate();
+    mMeterSampleRate.store(mFormat.sampleRate, std::memory_order_relaxed);
     mFormat.channelCount = mStream->getChannelCount();
     mChannelCount = mFormat.channelCount;
     mOboeFormat = mStream->getFormat();
@@ -160,7 +167,9 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     return mFormat.sampleRate;
 }
 
-int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint) {
+int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint,
+                                const std::vector<UsbIsoAudioSource::Config>& secondaryConfigs,
+                                bool independentInputs) {
     std::lock_guard<std::mutex> lock(mControlMutex);
     mLastUsbSetupFailure.clear();
     if (mStreamOpen.load()) {
@@ -175,28 +184,54 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
     }
+    for (auto& source : mSecondarySources) source->stop();
+    mSecondarySources.clear();
+    mSecondaryQueues.clear();
     releaseCaptureProcessing();
+    for (auto& meter : mMainMeters) meter.reset();
+    mMeterSampleRate.store(sampleRateHint > 0 ? sampleRateHint : 48000, std::memory_order_relaxed);
     mSourceMode = SourceMode::UsbIso;
 
     // The master is always exactly one stereo pair, regardless of how many channels are
     // actually present on the wire (isoConfig.totalChannels). In multitrack mode every wire
     // channel additionally feeds the track bus.
-    mTrackChannels = isoConfig.emitAllChannels && isoConfig.totalChannels <= TrackBus::kMaxChannels
-        ? isoConfig.totalChannels : 0;
+    if (!secondaryConfigs.empty() && (secondaryConfigs.size() > 2 || isoConfig.totalChannels != 2)) {
+        mLastUsbSetupFailure = "usb_setup_error=Unsupported multi-input configuration";
+        mSourceMode = SourceMode::None;
+        return -1;
+    }
+    mTrackChannels = independentInputs ? static_cast<int>((secondaryConfigs.size() + 1) * 2)
+        : isoConfig.emitAllChannels && isoConfig.totalChannels <= TrackBus::kMaxChannels
+            ? isoConfig.totalChannels : 0;
+    mMixRoute.store(independentInputs ? packMixRoute(0, 1) : UINT32_MAX, std::memory_order_relaxed);
+    mSecondaryQueues.resize(secondaryConfigs.size());
+    for (auto& queue : mSecondaryQueues) queue.samples.resize(4800 * 2);
     UsbIsoAudioSource::Config sourceConfig = isoConfig;
-    sourceConfig.emitAllChannels = mTrackChannels > 0;
+    sourceConfig.emitAllChannels = secondaryConfigs.empty() && mTrackChannels > 0;
     sourceConfig.disableRouteFallback = isoConfig.disableRouteFallback || mTrackChannels > 0;
     mUsbIsoSource = std::make_unique<UsbIsoAudioSource>();
     const std::string error = mUsbIsoSource->start(
         sourceConfig,
         [this](const int32_t* stereo, const int32_t* allChannels, int wireChannels, size_t count) {
-            onUsbIsoFrames(stereo, allChannels, wireChannels, count);
+            if (mSecondaryQueues.empty()) {
+                onUsbIsoFrames(stereo, allChannels, wireChannels, count);
+            } else {
+                static thread_local std::vector<int32_t> tracks;
+                tracks.resize(count * mTrackChannels);
+                readSecondaryFrames(tracks.data(), count);
+                for (size_t frame = 0; frame < count; ++frame) {
+                    tracks[frame * mTrackChannels] = stereo[frame * 2];
+                    tracks[frame * mTrackChannels + 1] = stereo[frame * 2 + 1];
+                }
+                onUsbIsoFrames(stereo, tracks.data(), mTrackChannels, count);
+            }
         });
 
     if (!error.empty()) {
         LOGE("Failed to start USB iso capture: %s", error.c_str());
         mLastUsbSetupFailure = "usb_setup_error=" + error + "\n" + mUsbIsoSource->diagnosticSummary();
         mUsbIsoSource.reset();
+        mSecondaryQueues.clear();
         mSourceMode = SourceMode::None;
         return -1;
     }
@@ -210,13 +245,44 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
         mLastUsbSetupFailure = "usb_setup_error=No usable sample-rate measurement\n" +
             mUsbIsoSource->diagnosticSummary();
         mUsbIsoSource.reset();
+        mSecondaryQueues.clear();
         mSourceMode = SourceMode::None;
         return -1;
+    }
+    for (size_t i = 0; i < secondaryConfigs.size(); ++i) {
+        const auto& config = secondaryConfigs[i];
+        if (config.totalChannels != 2 || config.bitResolution != isoConfig.bitResolution) {
+            mLastUsbSetupFailure = "usb_setup_error=Selected input formats differ";
+            mUsbIsoSource->stop();
+            mUsbIsoSource.reset();
+            mSecondaryQueues.clear();
+            mSourceMode = SourceMode::None;
+            return -1;
+        }
+        auto source = std::make_unique<UsbIsoAudioSource>();
+        const std::string secondaryError = source->start(config,
+            [this, i](const int32_t* stereo, const int32_t*, int, size_t count) {
+                pushSecondaryFrames(i, stereo, count);
+            });
+        if (!secondaryError.empty() || source->waitForMeasuredSampleRate(1500) != measuredSampleRate) {
+            mLastUsbSetupFailure = "usb_setup_error=Selected input " + std::to_string(config.interfaceNumber) +
+                (secondaryError.empty() ? " has a different or unverified clock" : " failed: " + secondaryError);
+            source->stop();
+            mUsbIsoSource->stop();
+            mUsbIsoSource.reset();
+            for (auto& opened : mSecondarySources) opened->stop();
+            mSecondarySources.clear();
+            mSecondaryQueues.clear();
+            mSourceMode = SourceMode::None;
+            return -1;
+        }
+        mSecondarySources.push_back(std::move(source));
     }
 
     mChannelCount = 2;
     mOboeFormat = oboe::AudioFormat::I32;
     mFormat.sampleRate = measuredSampleRate;
+    mMeterSampleRate.store(mFormat.sampleRate, std::memory_order_relaxed);
     mFormat.channelCount = 2;
     mFormat.bitsPerSample = isoConfig.bitResolution;
     mRingChannels = mFormat.channelCount + mTrackChannels;
@@ -230,27 +296,101 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
 
     mStreamOpen.store(true, std::memory_order_release);
     LOGI("USB iso capture open: %d Hz, 2ch extracted from a %dch wire "
-         "format, format=I32 canonical, multitrack channels=%d",
-            mFormat.sampleRate, isoConfig.totalChannels, mTrackChannels);
+         "format, format=I32 canonical, multitrack channels=%d, secondary inputs=%zu",
+            mFormat.sampleRate, isoConfig.totalChannels, mTrackChannels, mSecondarySources.size());
 
-        return mFormat.sampleRate;
+    return mFormat.sampleRate;
+}
+
+void UsbAudioEngine::setMixSources(int leftChannel, int rightChannel) {
+    // Encoder channel counts are fixed for the duration of a recording or live session.
+    if (mRecording.load(std::memory_order_acquire) || mLivePcmActive.load(std::memory_order_acquire)) return;
+    const uint32_t route = leftChannel >= kMixNone && rightChannel >= kMixNone &&
+        leftChannel < TrackBus::kMaxChannels && rightChannel < TrackBus::kMaxChannels
+        ? packMixRoute(leftChannel, rightChannel) : UINT32_MAX;
+    if (mMixRoute.exchange(route, std::memory_order_acq_rel) != route) {
+        mHistoryClearRequested.store(true, std::memory_order_release);
+    }
+}
+
+void UsbAudioEngine::pushSecondaryFrames(size_t input, const int32_t* stereo, size_t frameCount) {
+    std::lock_guard<std::mutex> lock(mSecondaryMutex);
+    auto& queue = mSecondaryQueues[input];
+    const size_t capacity = queue.samples.size();
+    for (size_t frame = 0; frame < frameCount; ++frame) {
+        if (queue.available == capacity) {
+            queue.read = (queue.read + 2) % capacity;
+            queue.available -= 2;
+            ++queue.droppedFrames;
+        }
+        queue.samples[queue.write] = stereo[frame * 2];
+        queue.samples[(queue.write + 1) % capacity] = stereo[frame * 2 + 1];
+        queue.write = (queue.write + 2) % capacity;
+        queue.available += 2;
+    }
+}
+
+void UsbAudioEngine::readSecondaryFrames(int32_t* interleaved, size_t frameCount) {
+    const auto channels = static_cast<size_t>(mTrackChannels);
+    std::fill(interleaved, interleaved + frameCount * channels, 0);
+    std::lock_guard<std::mutex> lock(mSecondaryMutex);
+    for (size_t input = 0; input < mSecondaryQueues.size(); ++input) {
+        auto& queue = mSecondaryQueues[input];
+        for (size_t frame = 0; frame < frameCount; ++frame) {
+            if (queue.available < 2) {
+                ++queue.missingFrames;
+                continue;
+            }
+            int32_t* output = interleaved + frame * channels + (input + 1) * 2;
+            output[0] = queue.samples[queue.read];
+            output[1] = queue.samples[(queue.read + 1) % queue.samples.size()];
+            queue.read = (queue.read + 2) % queue.samples.size();
+            queue.available -= 2;
+        }
+    }
 }
 
 void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, const int32_t* allChannels,
                                     int wireChannels, size_t frameCount) {
-    // --- Invoked on UsbIsoAudioSource's libusb event thread: no blocking I/O below. ---
-    // Mirrors the tail of onAudioReady() below -- meter update + optional ring-buffer write --
-    // but always against a canonical, already-2-channel buffer (no per-format decode needed
-    // here; UsbIsoAudioSource already produced left-justified, sign-extended int32 samples).
+    // Process every input identically before constructing the stereo Mix.
+    TrackBus* bus = mTrackBus.load(std::memory_order_acquire);
+    static thread_local std::vector<int32_t> tracks;
+    const int channels = bus ? bus->channels() : 0;
+    if (bus) {
+        const size_t trackSamples = frameCount * static_cast<size_t>(channels);
+        tracks.resize(trackSamples);
+        if (allChannels && wireChannels == channels) {
+            std::memcpy(tracks.data(), allChannels, trackSamples * sizeof(int32_t));
+        } else {
+            std::fill(tracks.begin(), tracks.end(), 0);
+        }
+        float gains[TrackBus::kMaxTracks];
+        for (int t = 0; t < bus->trackCount(); ++t) gains[t] = mTrackGainLinear[t].load(std::memory_order_relaxed);
+        bus->process(tracks.data(), frameCount, gains, mLimiterEnabled.load(std::memory_order_relaxed),
+                     mTrackWaveformsEnabled.load(std::memory_order_relaxed));
+    }
     static thread_local std::vector<int32_t> amplified;
     const size_t sampleCount = frameCount * 2;
     if (amplified.size() < sampleCount) amplified.resize(sampleCount);
     std::memcpy(amplified.data(), interleavedStereo, sampleCount * sizeof(int32_t));
+    const uint32_t mixRoute = mMixRoute.load(std::memory_order_acquire);
+    if (bus && mixRoute != UINT32_MAX) {
+        renderStereoMix(tracks.data(), frameCount, channels,
+                        mixLeftSource(mixRoute), mixRightSource(mixRoute), amplified.data());
+    }
     applyGainAndLimit(amplified.data(), frameCount, 2);
+    // None stays digitally silent, including any old samples in the limiter's look-ahead.
+    if (bus && mixRoute != UINT32_MAX) {
+        for (size_t frame = 0; frame < frameCount; ++frame) {
+            if (mixLeftSource(mixRoute) == kMixNone) amplified[frame * 2] = 0;
+            if (mixRightSource(mixRoute) == kMixNone) amplified[frame * 2 + 1] = 0;
+        }
+    }
     const int32_t* processedStereo = amplified.data();
 
     const StereoMeterReading reading =
-        MeterCalculator::analyze(processedStereo, static_cast<int32_t>(frameCount), oboe::AudioFormat::I32);
+        MeterCalculator::analyze(processedStereo, static_cast<int32_t>(frameCount), oboe::AudioFormat::I32,
+            mMainMeters.data(), meterRmsAlpha(frameCount, mMeterSampleRate.load(std::memory_order_relaxed)));
     mLeftPeakDb.store(reading.leftPeakDb, std::memory_order_relaxed);
     mLeftRmsDb.store(reading.leftRmsDb, std::memory_order_relaxed);
     mRightPeakDb.store(reading.rightPeakDb, std::memory_order_relaxed);
@@ -262,27 +402,12 @@ void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, const int3
     }
     writeLiveFrames(processedStereo, frameCount, 2);
 
-    TrackBus* bus = mTrackBus.load(std::memory_order_acquire);
     if (!bus) {
         routeCapturedFrames(processedStereo, frameCount, 2);
         return;
     }
-    // Multitrack: process every wire channel, then queue [master pair | all channels] frames
-    // so the encoder writes the master and each track from the same frames.
-    const int channels = bus->channels();
-    static thread_local std::vector<int32_t> tracks;
+    // One clock, one ring frame: [Mix L/R | Track 1 L/R | Track 2 L/R | ...].
     static thread_local std::vector<int32_t> combined;
-    const size_t trackSamples = frameCount * static_cast<size_t>(channels);
-    if (tracks.size() < trackSamples) tracks.resize(trackSamples);
-    if (allChannels && wireChannels == channels) {
-        std::memcpy(tracks.data(), allChannels, trackSamples * sizeof(int32_t));
-    } else {
-        std::fill(tracks.begin(), tracks.begin() + static_cast<std::ptrdiff_t>(trackSamples), 0);
-    }
-    float gains[TrackBus::kMaxTracks];
-    for (int t = 0; t < bus->trackCount(); ++t) gains[t] = mTrackGainLinear[t].load(std::memory_order_relaxed);
-    bus->process(tracks.data(), frameCount, gains, mLimiterEnabled.load(std::memory_order_relaxed),
-                 mTrackWaveformsEnabled.load(std::memory_order_relaxed));
 
     const int ringChannels = 2 + channels;
     const size_t combinedSamples = frameCount * static_cast<size_t>(ringChannels);
@@ -352,7 +477,8 @@ oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*strea
     // Live stereo metering — always computed, even while paused/stopped, so the UI VU meter
     // reflects the signal actually present at the mixer's output at all times.
     const StereoMeterReading reading =
-        MeterCalculator::analyze(canonical.data(), numFrames, oboe::AudioFormat::I32);
+        MeterCalculator::analyze(canonical.data(), numFrames, oboe::AudioFormat::I32,
+            mMainMeters.data(), meterRmsAlpha(numFrames, mMeterSampleRate.load(std::memory_order_relaxed)));
     mLeftPeakDb.store(reading.leftPeakDb, std::memory_order_relaxed);
     mLeftRmsDb.store(reading.leftRmsDb, std::memory_order_relaxed);
     mRightPeakDb.store(reading.rightPeakDb, std::memory_order_relaxed);
@@ -498,7 +624,9 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
         case ContainerFormat::Mp3: mWriter = std::make_unique<Mp3Writer>(); break;
     }
 
-    if (!mWriter->open(path, mFormat)) {
+    const AudioFormatInfo outputFormat = mixOutputFormat();
+    mRecordingOutputChannels = outputFormat.channelCount;
+    if (!mWriter->open(path, outputFormat)) {
         LOGE("Writer failed to open output file: %s", path.c_str());
         mWriter.reset();
         mPendingCompanion.reset();
@@ -541,7 +669,9 @@ bool UsbAudioEngine::startRecordingFd(int fd, ContainerFormat format) {
         case ContainerFormat::Flac: mWriter = std::make_unique<FlacWriter>(); break;
         case ContainerFormat::Mp3: mWriter = std::make_unique<Mp3Writer>(); break;
     }
-    if (!mWriter->openFd(fd, mFormat)) {
+    const AudioFormatInfo outputFormat = mixOutputFormat();
+    mRecordingOutputChannels = outputFormat.channelCount;
+    if (!mWriter->openFd(fd, outputFormat)) {
         LOGE("Writer failed to open MediaStore fd");
         mWriter.reset();
         mPendingCompanion.reset();
@@ -584,7 +714,9 @@ bool UsbAudioEngine::rollRecordingFd(int fd, ContainerFormat format) {
         case ContainerFormat::Flac: next = std::make_unique<FlacWriter>(); break;
         case ContainerFormat::Mp3: next = std::make_unique<Mp3Writer>(); break;
     }
-    if (!next->openFd(fd, mFormat)) return false;
+    AudioFormatInfo outputFormat = mFormat;
+    outputFormat.channelCount = mRecordingOutputChannels;
+    if (!next->openFd(fd, outputFormat)) return false;
 
     std::unique_ptr<AudioWriter> previous;
     std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> previousTracks;
@@ -704,7 +836,7 @@ size_t UsbAudioEngine::readLivePcm16(uint8_t* output, size_t maxBytes) {
     const size_t samplesRead = read / sizeof(int32_t);
     uint64_t nonZeroSamples = 0;
     for (size_t index = 0; index < samplesRead; ++index) {
-        const int16_t sample = static_cast<int16_t>(input[index] >> 16);
+        const auto sample = static_cast<int16_t>(input[index] >> 16);
         if (sample != 0) ++nonZeroSamples;
         output[index * 2] = static_cast<uint8_t>(sample & 0xFF);
         output[index * 2 + 1] = static_cast<uint8_t>((sample >> 8) & 0xFF);
@@ -784,6 +916,9 @@ void UsbAudioEngine::closeEngine() {
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
     }
+    for (auto& source : mSecondarySources) source->stop();
+    mSecondarySources.clear();
+    mSecondaryQueues.clear();
     releaseCaptureProcessing();
     mPendingCompanion.reset();
     mRingBuffer.reset();
@@ -794,8 +929,8 @@ void UsbAudioEngine::closeEngine() {
 
 void UsbAudioEngine::encoderThreadLoop() {
     constexpr size_t kChunkFrames = 960; // ~20ms chunks @48kHz; small enough for low file-write latency
-    // Ring frames hold the master channels, then (multitrack only) every track channel.
-    const int masterChannels = mFormat.channelCount;
+    // Ring frames always keep the stereo Mix prefix; only its encoded file can be mono.
+    const int masterChannels = mRecordingOutputChannels;
     const int ringChannels = mRingChannels;
     std::vector<int32_t> chunk(kChunkFrames * ringChannels);
     std::vector<int32_t> masterScratch;
@@ -826,8 +961,9 @@ void UsbAudioEngine::encoderThreadLoop() {
         mElapsedMillis.store(
             static_cast<int64_t>(framesEncoded * 1000 / mFormat.sampleRate),
             std::memory_order_relaxed);
-        const size_t lastAudible =
-            LeadingSilenceGate::lastAudibleFrame(master, frameCount, masterChannels);
+        const bool independentMix = mMixRoute.load(std::memory_order_acquire) != UINT32_MAX;
+        const size_t lastAudible = LeadingSilenceGate::lastAudibleFrame(
+            independentMix ? frames : master, frameCount, independentMix ? ringChannels : masterChannels);
         if (lastAudible == frameCount) {
             mTrailingSilenceFrames.fetch_add(frameCount, std::memory_order_relaxed);
         } else {
@@ -902,9 +1038,11 @@ void UsbAudioEngine::encoderThreadLoop() {
 }
 
 void UsbAudioEngine::resetSilenceGate() {
-    // Only the master decides when audio starts; tracks are trimmed on the same frame.
+    // Independent inputs must not lose their intro when the selected Mix channels are silent.
+    const int gateChannels = mMixRoute.load(std::memory_order_acquire) != UINT32_MAX
+        ? mRingChannels : mFormat.channelCount;
     mSilenceGate.reset(mTrimLeadingSilence.load(std::memory_order_acquire),
-                       mRingChannels, mFormat.sampleRate, mFormat.channelCount);
+                       mRingChannels, mFormat.sampleRate, gateChannels);
     mTrimmedLeadingMillis.store(0, std::memory_order_relaxed);
     mAwaitingAudio.store(mSilenceGate.awaiting(), std::memory_order_release);
 }
@@ -920,15 +1058,17 @@ void UsbAudioEngine::publishSilenceGateState() {
     }
 }
 
-void UsbAudioEngine::getLevels(float outLevels[4]) const {
-    outLevels[0] = mLeftPeakDb.load(std::memory_order_relaxed);
-    outLevels[1] = mLeftRmsDb.load(std::memory_order_relaxed);
-    outLevels[2] = mRightPeakDb.load(std::memory_order_relaxed);
-    outLevels[3] = mRightRmsDb.load(std::memory_order_relaxed);
+void UsbAudioEngine::getLevels(float outLevels[4]) {
+    outLevels[0] = mMainMeters[0].takePeakDb();
+    outLevels[1] = mMainMeters[0].rmsDb();
+    outLevels[2] = mMainMeters[1].takePeakDb();
+    outLevels[3] = mMainMeters[1].rmsDb();
 }
 
-bool UsbAudioEngine::isClipping() const {
-    return mClipping.load(std::memory_order_relaxed);
+bool UsbAudioEngine::isClipping() {
+    const bool left = mMainMeters[0].takeClipping();
+    const bool right = mMainMeters[1].takeClipping();
+    return left || right;
 }
 
 int64_t UsbAudioEngine::getElapsedMillis() const {
@@ -940,6 +1080,7 @@ int32_t UsbAudioEngine::getXRunCount() const {
 }
 
 void UsbAudioEngine::getUsbIsoTransferStats(uint64_t outStats[7]) const {
+    std::lock_guard<std::mutex> lock(mControlMutex);
     std::fill(outStats, outStats + 7, 0);
     if (!mUsbIsoSource) {
         return;
@@ -952,6 +1093,16 @@ void UsbAudioEngine::getUsbIsoTransferStats(uint64_t outStats[7]) const {
     outStats[4] = stats.bytesReceived;
     outStats[5] = stats.nonZeroBytesReceived;
     outStats[6] = stats.resubmitFailures;
+}
+
+std::vector<uint64_t> UsbAudioEngine::getSecondaryInputBytes() const {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    std::vector<uint64_t> counts;
+    counts.reserve(mSecondarySources.size());
+    for (const auto& source : mSecondarySources) {
+        counts.push_back(source->getTransferStats().bytesReceived);
+    }
+    return counts;
 }
 
 std::string UsbAudioEngine::getDiagnosticSummary() {
@@ -998,6 +1149,16 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
     }
     if (mUsbIsoSource) {
         out << "\n--- usb_iso_source ---\n" << mUsbIsoSource->diagnosticSummary();
+        for (size_t i = 0; i < mSecondarySources.size(); ++i) {
+            out << "\n--- secondary_usb_iso_source_" << i + 1 << " ---\n"
+                << mSecondarySources[i]->diagnosticSummary();
+        }
+        std::lock_guard<std::mutex> queueLock(mSecondaryMutex);
+        for (size_t i = 0; i < mSecondaryQueues.size(); ++i) {
+            out << "\nsecondary_queue_" << i + 1 << "_dropped_frames="
+                << mSecondaryQueues[i].droppedFrames
+                << " missing_frames=" << mSecondaryQueues[i].missingFrames;
+        }
     } else if (!mLastUsbSetupFailure.empty()) {
         out << "\n--- failed_usb_setup ---\n" << mLastUsbSetupFailure;
     }
@@ -1009,6 +1170,18 @@ void UsbAudioEngine::getWaveformBins(float* outBins) const {
     if (mWaveformAnalyzer) {
         uint32_t sequence = 0;
         mWaveformAnalyzer->getBins(outBins, &sequence);
+        outBins[kWaveformBinCount * 4] = static_cast<float>(sequence % 1048576);
+        outBins[kWaveformBinCount * 4 + 1] = mWaveformAnalyzer->binDurationMillis();
+    } else {
+        std::memset(outBins, 0, (kWaveformBinCount * 4 + 2) * sizeof(float));
+    }
+}
+
+void UsbAudioEngine::getMixChannelWaveformBins(int channel, float* outBins) const {
+    std::unique_lock<std::mutex> lock(mControlMutex, std::try_to_lock);
+    if (lock.owns_lock() && mWaveformAnalyzer) {
+        uint32_t sequence = 0;
+        mWaveformAnalyzer->getChannelBins(channel, outBins, &sequence);
         outBins[kWaveformBinCount * 4] = static_cast<float>(sequence % 1048576);
         outBins[kWaveformBinCount * 4 + 1] = mWaveformAnalyzer->binDurationMillis();
     } else {
@@ -1052,7 +1225,7 @@ bool UsbAudioEngine::prepareCompanionFd(int fd, ContainerFormat format) {
         case ContainerFormat::Flac: writer = std::make_unique<FlacWriter>(); break;
         case ContainerFormat::Mp3: writer = std::make_unique<Mp3Writer>(); break;
     }
-    if (!writer->openFd(fd, mFormat)) {
+    if (!writer->openFd(fd, mixOutputFormat())) {
         LOGE("Companion writer failed to open MediaStore fd");
         return false;
     }
@@ -1116,6 +1289,18 @@ std::unique_ptr<AudioWriter> UsbAudioEngine::makeTrackWriter(int track, int fd, 
     return writer;
 }
 
+int UsbAudioEngine::getMixOutputChannelCount() const {
+    const uint32_t route = mMixRoute.load(std::memory_order_acquire);
+    return mTrackChannels == 0 || route == UINT32_MAX ? mFormat.channelCount
+        : mixOutputChannels(mixLeftSource(route), mixRightSource(route));
+}
+
+AudioFormatInfo UsbAudioEngine::mixOutputFormat() const {
+    AudioFormatInfo format = mFormat;
+    format.channelCount = getMixOutputChannelCount();
+    return format;
+}
+
 int UsbAudioEngine::getTrackChannelCount() const {
     const TrackBus* bus = mTrackBus.load(std::memory_order_acquire);
     return bus ? bus->channels() : 0;
@@ -1148,7 +1333,7 @@ uint32_t UsbAudioEngine::getTrackErrorMask() const {
 
 void UsbAudioEngine::setTrackGainDb(int track, float gainDb) {
     if (track < 0 || track >= TrackBus::kMaxTracks || !std::isfinite(gainDb)) return;
-    mTrackGainLinear[track].store(std::pow(10.0f, std::clamp(gainDb, -24.0f, 12.0f) / 20.0f),
+    mTrackGainLinear[track].store(std::pow(10.0f, std::clamp(gainDb, 0.0f, 12.0f) / 20.0f),
                                   std::memory_order_relaxed);
 }
 
@@ -1169,6 +1354,16 @@ void UsbAudioEngine::getTrackWaveformBins(int track, float* outBins) const {
     const TrackBus* bus = lock.owns_lock() ? mTrackBus.load(std::memory_order_acquire) : nullptr;
     if (bus) {
         bus->readWaveform(track, outBins);
+    } else {
+        std::memset(outBins, 0, (kWaveformBinCount * 4 + 2) * sizeof(float));
+    }
+}
+
+void UsbAudioEngine::getTrackChannelWaveformBins(int channel, float* outBins) const {
+    std::unique_lock<std::mutex> lock(mControlMutex, std::try_to_lock);
+    const TrackBus* bus = lock.owns_lock() ? mTrackBus.load(std::memory_order_acquire) : nullptr;
+    if (bus) {
+        bus->readChannelWaveform(channel, outBins);
     } else {
         std::memset(outBins, 0, (kWaveformBinCount * 4 + 2) * sizeof(float));
     }
@@ -1197,7 +1392,7 @@ int UsbAudioEngine::getPioneerTrackSource(int output) {
 
 } // namespace djmrec
 
-void djmrec::UsbAudioEngine::setRecordingGainDb(int gainDb) {
-    mRecordingGainLinear.store(std::pow(10.0f, std::clamp(gainDb, -12, 24) / 20.0f),
+void djmrec::UsbAudioEngine::setRecordingGainDb(float gainDb) {
+    mRecordingGainLinear.store(std::pow(10.0f, std::clamp(gainDb, 0.0f, 12.0f) / 20.0f),
                                std::memory_order_relaxed);
 }

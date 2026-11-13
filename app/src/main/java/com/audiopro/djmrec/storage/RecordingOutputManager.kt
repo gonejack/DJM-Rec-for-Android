@@ -51,7 +51,7 @@ object RecordingOutputManager {
     ): PendingRecordingOutput? = createNamed(context, displayName(sessionId, format, partIndex), format, partIndex)
 
     /**
-     * One multitrack track file, in a folder next to the set (`Music/DJMRec/<set> tracks/`) so
+     * One multitrack track file, in a folder next to the set (`Music/DJMRec/<set>_tracks/`) so
      * the Sets list keeps showing one entry per set. [trackNumber] is 1-based, as shown in the UI.
      */
     fun createTrack(
@@ -246,8 +246,8 @@ object RecordingOutputManager {
         return "mix_${sessionId}$suffix.${format.extension}"
     }
 
-    /** `Music/DJMRec/mix_<session> tracks`: matches the set's own file name. */
-    internal fun trackFolder(sessionId: String): String = "$RELATIVE_PATH/mix_$sessionId tracks"
+    /** `Music/DJMRec/mix_<session>_tracks`: matches the set's own file name. */
+    internal fun trackFolder(sessionId: String): String = "$RELATIVE_PATH/mix_${sessionId}_tracks"
 
     /** e.g. "02 CH1 Post-fader.wav"; WAV rollover parts get the set's `_partNN` suffix. */
     internal fun trackDisplayName(trackNumber: Int, label: String, format: RecordingFormat, partIndex: Int): String {
@@ -260,7 +260,8 @@ object RecordingOutputManager {
         } else {
             ""
         }
-        return "$number $name$suffix.${format.extension}"
+        val title = if (cleaned == "Track $trackNumber") cleaned else "$number $name"
+        return "$title$suffix.${format.extension}"
     }
 
     private fun ParcelFileDescriptor.closeQuietly() {

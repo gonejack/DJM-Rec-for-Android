@@ -6,9 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +36,7 @@ fun InputPicker(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     IconButton(onClick = viewModel::refreshInputs) { Icon(Icons.Default.Refresh, "Refresh USB devices") }
                 }
                 Text(if (locked) "Input stays locked while recording, connecting or streaming."
-                    else "Choose your mixer or audio interface. USB permission may be requested.",
+                    else "Select inputs in track order: the first checked is Track 1. Tap the device name to return here.",
                     style = MaterialTheme.typography.bodyMedium)
             }
             notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
@@ -47,20 +45,26 @@ fun InputPicker(viewModel: MainViewModel, onDismiss: () -> Unit) {
             }
             items(inputs, key = { it.selectionKey }) { input ->
                 val selected = input.matches(device)
-                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = if (selected) 4.dp else 1.dp) {
-                    Row(Modifier.fillMaxWidth().clickable(enabled = !locked && input.captureCandidate && !selected) {
+                val canToggle = !locked && input.captureCandidate &&
+                    (!selected || (input.multiSelectable && device?.selectedInterfaceNumbers?.size != 1))
+                Surface(shape = RoundedCornerShape(8.dp), tonalElevation = if (selected) 4.dp else 1.dp) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = canToggle) {
                         viewModel.selectInput(input.deviceName, input.interfaceNumber)
-                        onDismiss()
                     }.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.Usb, null)
+                        if (input.multiSelectable) {
+                            Checkbox(checked = selected, onCheckedChange = null, enabled = canToggle)
+                        } else {
+                            RadioButton(selected = selected, onClick = null, enabled = canToggle)
+                        }
                         Column(Modifier.weight(1f)) {
                             Text(input.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(when {
-                                selected -> device!!.profileDescription
+                                selected && input.multiSelectable -> "Track ${(device?.selectedInterfaceNumbers?.indexOf(input.interfaceNumber) ?: -1) + 1}"
+                                selected -> "Selected"
                                 !input.captureCandidate -> "No USB audio input advertised"
                                 !input.hasPermission -> "Tap to allow USB access"
-                                else -> "Tap to inspect audio input"
+                                else -> "Available"
                             }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

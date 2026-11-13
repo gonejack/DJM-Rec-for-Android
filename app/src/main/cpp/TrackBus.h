@@ -59,17 +59,13 @@ public:
     TrackBus(int sampleRate, int channels)
         : mChannels(std::clamp(channels, 1, kMaxChannels)),
           mLayout(makeTrackLayout(mChannels, kMaxTracks)),
-          mRmsTimeConstantFrames(std::max(1.0, sampleRate * 0.3)) {
+          mSampleRate(sampleRate) {
         for (const auto& track : mLayout) {
             auto limiter = std::make_unique<SafetyLimiter>();
             limiter->configure(sampleRate, track.width);
             mLimiters.push_back(std::move(limiter));
             mWaveforms.push_back(std::make_unique<WaveformAnalyzer>(sampleRate));
         }
-        mMeanSquare.fill(0.0);
-        for (auto& value : mPeakHold) value.store(0.0f, std::memory_order_relaxed);
-        for (auto& value : mRms) value.store(0.0f, std::memory_order_relaxed);
-        for (auto& value : mClipHold) value.store(false, std::memory_order_relaxed);
     }
 
     int channels() const { return mChannels; }
@@ -85,7 +81,7 @@ public:
         if (!interleaved || frameCount == 0) return;
         const size_t needed = frameCount * 2;
         if (mScratch.size() < needed) mScratch.resize(needed);
-        const double alpha = 1.0 - std::exp(-static_cast<double>(frameCount) / mRmsTimeConstantFrames);
+        const double alpha = meterRmsAlpha(frameCount, mSampleRate);
 
         for (size_t t = 0; t < mLayout.size(); ++t) {
             const TrackLayout& track = mLayout[t];
@@ -105,11 +101,7 @@ public:
                     sumSquares += static_cast<double>(sample) * sample;
                 }
                 const int channel = track.first + ch;
-                holdMax(mPeakHold[channel], peak);
-                if (peak >= kClipThreshold) mClipHold[channel].store(true, std::memory_order_relaxed);
-                double& meanSquare = mMeanSquare[channel];
-                meanSquare += (sumSquares / static_cast<double>(frameCount) - meanSquare) * alpha;
-                mRms[channel].store(static_cast<float>(std::sqrt(meanSquare)), std::memory_order_relaxed);
+                mMeters[channel].push(peak, sumSquares / static_cast<double>(frameCount), alpha);
             }
 
             for (size_t f = 0; f < frameCount; ++f) {
@@ -131,11 +123,9 @@ public:
         const int count = std::min(mChannels, maxChannels);
         for (int channel = 0; channel < count; ++channel) {
             out[channel * kLevelStride] =
-                amplitudeToDb(mPeakHold[channel].exchange(0.0f, std::memory_order_relaxed));
-            out[channel * kLevelStride + 1] =
-                amplitudeToDb(mRms[channel].load(std::memory_order_relaxed));
-            out[channel * kLevelStride + 2] =
-                mClipHold[channel].exchange(false, std::memory_order_relaxed) ? 1.0f : 0.0f;
+                mMeters[channel].takePeakDb();
+            out[channel * kLevelStride + 1] = mMeters[channel].rmsDb();
+            out[channel * kLevelStride + 2] = mMeters[channel].takeClipping() ? 1.0f : 0.0f;
         }
         return count;
     }
@@ -153,24 +143,28 @@ public:
         out[bins * 4 + 1] = mWaveforms[track]->binDurationMillis();
     }
 
-private:
-    static void holdMax(std::atomic<float>& target, float value) {
-        float previous = target.load(std::memory_order_relaxed);
-        while (value > previous &&
-               !target.compare_exchange_weak(previous, value, std::memory_order_relaxed)) {
+    /** Per-input-channel history for monitoring a freely routed Mix. */
+    void readChannelWaveform(int channel, float* out) const {
+        constexpr int bins = WaveformAnalyzer::kBinCount;
+        if (channel < 0 || channel >= mChannels) {
+            std::memset(out, 0, (bins * 4 + 2) * sizeof(float));
+            return;
         }
+        const int track = channel / 2;
+        uint32_t sequence = 0;
+        mWaveforms[track]->getChannelBins(channel % 2, out, &sequence);
+        out[bins * 4] = static_cast<float>(sequence % 1048576);
+        out[bins * 4 + 1] = mWaveforms[track]->binDurationMillis();
     }
 
+private:
     const int mChannels;
     const std::vector<TrackLayout> mLayout;
-    const double mRmsTimeConstantFrames;
+    const int mSampleRate;
     std::vector<std::unique_ptr<SafetyLimiter>> mLimiters;
     std::vector<std::unique_ptr<WaveformAnalyzer>> mWaveforms;
     std::vector<int32_t> mScratch;                    // capture thread only
-    std::array<double, kMaxChannels> mMeanSquare{};   // capture thread only
-    std::array<std::atomic<float>, kMaxChannels> mPeakHold;
-    std::array<std::atomic<float>, kMaxChannels> mRms;
-    std::array<std::atomic<bool>, kMaxChannels> mClipHold;
+    std::array<ChannelMeter, kMaxChannels> mMeters;
 };
 
 } // namespace djmrec

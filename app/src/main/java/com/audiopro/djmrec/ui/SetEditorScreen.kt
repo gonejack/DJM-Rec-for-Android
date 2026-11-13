@@ -155,7 +155,6 @@ private fun MessagePane(message: String, action: String, onAction: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: () -> Unit) {
     val context = LocalContext.current

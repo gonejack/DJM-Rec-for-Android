@@ -66,7 +66,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SilenceAutoStopPreference(minutes: Int, onChange: (Int) -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {

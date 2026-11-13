@@ -99,6 +99,8 @@ WaveformAnalyzer::WaveformAnalyzer(int sampleRate) {
 
     // Start with an empty rolling history.
     for (auto& value : mBins) value.store(0.0f, std::memory_order_relaxed);
+    for (auto& channel : mChannelBins)
+        for (auto& value : channel) value.store(0.0f, std::memory_order_relaxed);
 }
 
 WaveformAnalyzer::~WaveformAnalyzer() = default;
@@ -109,7 +111,7 @@ WaveformAnalyzer::~WaveformAnalyzer() = default;
 
 void WaveformAnalyzer::pushFrames(const int32_t* interleavedStereo, size_t frameCount) {
     for (size_t i = 0; i < frameCount; ++i) {
-        // Mix stereo → mono (average L+R).
+        // Keep the channels separate; the combined view uses the larger peak.
         const float left  = static_cast<float>(interleavedStereo[i * 2])     / kMaxAmplitude;
         const float right = static_cast<float>(interleavedStereo[i * 2 + 1]) / kMaxAmplitude;
         accumulateSample(left, right);
@@ -136,10 +138,10 @@ void WaveformAnalyzer::accumulateSample(float left, float right) {
         const float low = mLowFilter[channel].process(sample);
         const float mid = mMidFilter2[channel].process(mMidFilter1[channel].process(sample));
         const float high = mHighFilter[channel].process(sample);
-        bin.peakAbs = std::max(bin.peakAbs, std::fabs(sample));
-        bin.bandPeak[0] = std::max(bin.bandPeak[0], std::fabs(low));
-        bin.bandPeak[1] = std::max(bin.bandPeak[1], std::fabs(mid));
-        bin.bandPeak[2] = std::max(bin.bandPeak[2], std::fabs(high));
+        bin.peakAbs[channel] = std::max(bin.peakAbs[channel], std::fabs(sample));
+        bin.bandPeak[channel][0] = std::max(bin.bandPeak[channel][0], std::fabs(low));
+        bin.bandPeak[channel][1] = std::max(bin.bandPeak[channel][1], std::fabs(mid));
+        bin.bandPeak[channel][2] = std::max(bin.bandPeak[channel][2], std::fabs(high));
     }
     bin.sampleCount++;
 
@@ -152,14 +154,22 @@ void WaveformAnalyzer::commitBin() {
     const uint32_t committed = mCommitted.load(std::memory_order_relaxed);
     const int index = committed % kRingCount;
     const int base = index * 4;
-    mBins[base + 0].store(mCurrent.peakAbs, std::memory_order_relaxed);
-    for (int band = 0; band < 3; ++band) {
-        // Peak hold with release, then rekordbox's level curve for this band.
-        mEnvelope[band] = std::max(mCurrent.bandPeak[band], mEnvelope[band] * mReleasePerBin[band]);
-        const BandCurve& curve = kBandCurves[band];
-        const float level = std::min(1.0f, curve.gain * std::pow(mEnvelope[band], curve.exponent));
-        mBins[base + 1 + band].store(level, std::memory_order_relaxed);
+    float combined[4] = {};
+    for (int channel = 0; channel < 2; ++channel) {
+        const float amplitude = mCurrent.peakAbs[channel];
+        mChannelBins[channel][base].store(amplitude, std::memory_order_relaxed);
+        combined[0] = std::max(combined[0], amplitude);
+        for (int band = 0; band < 3; ++band) {
+            float& envelope = mEnvelope[channel][band];
+            envelope = std::max(mCurrent.bandPeak[channel][band], envelope * mReleasePerBin[band]);
+            const BandCurve& curve = kBandCurves[band];
+            const float level = std::min(1.0f, curve.gain * std::pow(envelope, curve.exponent));
+            mChannelBins[channel][base + 1 + band].store(level, std::memory_order_relaxed);
+            combined[1 + band] = std::max(combined[1 + band], level);
+        }
     }
+    for (int band = 0; band < 4; ++band)
+        mBins[base + band].store(combined[band], std::memory_order_relaxed);
     mCommitted.store(committed + 1, std::memory_order_release);
     mCurrent = {};
 }
@@ -169,12 +179,25 @@ void WaveformAnalyzer::commitBin() {
 // ---------------------------------------------------------------------------
 
 void WaveformAnalyzer::getBins(float* outBins, uint32_t* sequence) const {
+    readBins(mBins, outBins, sequence);
+}
+
+void WaveformAnalyzer::getChannelBins(int channel, float* outBins, uint32_t* sequence) const {
+    if (channel < 0 || channel > 1) {
+        std::fill(outBins, outBins + kBinCount * 4, 0.0f);
+        if (sequence) *sequence = 0;
+        return;
+    }
+    readBins(mChannelBins[channel], outBins, sequence);
+}
+
+void WaveformAnalyzer::readBins(const std::atomic<float>* source, float* outBins, uint32_t* sequence) const {
     for (int attempt = 0; attempt < 3; ++attempt) {
         const uint32_t end = mCommitted.load(std::memory_order_acquire);
         for (int i = 0; i < kBinCount; ++i) {
             const int sourceBase = ((end - kBinCount + i) % kRingCount) * 4;
             for (int band = 0; band < 4; ++band) {
-                outBins[i * 4 + band] = mBins[sourceBase + band].load(std::memory_order_relaxed);
+                outBins[i * 4 + band] = source[sourceBase + band].load(std::memory_order_relaxed);
             }
         }
         if (mCommitted.load(std::memory_order_acquire) - end < kBinCount) {
@@ -194,8 +217,10 @@ void WaveformAnalyzer::reset() {
     for (auto& filter : mHighFilter) filter.resetState();
 
     mCurrent = {};
-    std::fill(std::begin(mEnvelope), std::end(mEnvelope), 0.0f);
+    for (auto& channel : mEnvelope) std::fill(std::begin(channel), std::end(channel), 0.0f);
     for (auto& value : mBins) value.store(0.0f, std::memory_order_relaxed);
+    for (auto& channel : mChannelBins)
+        for (auto& value : channel) value.store(0.0f, std::memory_order_relaxed);
     mCommitted.store(0, std::memory_order_release);
 }
 

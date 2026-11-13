@@ -80,6 +80,11 @@ bool Mp3Writer::openFd(int fd, const AudioFormatInfo& format) {
 }
 
 bool Mp3Writer::begin(const AudioFormatInfo& format, FILE* file) {
+    if (format.channelCount < 1 || format.channelCount > 2) {
+        LOGE("MP3: unsupported channel count %d", format.channelCount);
+        std::fclose(file);
+        return false;
+    }
     int stages = 0;
     const int rate = encoderRateFor(format.sampleRate, &stages);
     // Spec is 320 kbps; fall back to the highest rate-legal bitrate for exotic
@@ -96,9 +101,9 @@ bool Mp3Writer::begin(const AudioFormatInfo& format, FILE* file) {
         shine_config_t config;
         std::memset(&config, 0, sizeof(config));
         shine_set_config_mpeg_defaults(&config.mpeg);
-        config.wave.channels = PCM_STEREO;
+        config.wave.channels = format.channelCount == 1 ? PCM_MONO : PCM_STEREO;
         config.wave.samplerate = rate;
-        config.mpeg.mode = STEREO;
+        config.mpeg.mode = format.channelCount == 1 ? MONO : STEREO;
         config.mpeg.bitr = bitrate;
         shine = shine_initialise(&config);
     }
@@ -111,7 +116,8 @@ bool Mp3Writer::begin(const AudioFormatInfo& format, FILE* file) {
     mShine = shine;
     mDecimatorStages = stages;
     mPassSamples = shine_samples_per_pass(shine);
-    mStage.assign(static_cast<size_t>(mPassSamples) * 2, 0);
+    mChannels = format.channelCount;
+    mStage.assign(static_cast<size_t>(mPassSamples) * mChannels, 0);
     mStagedFrames = 0;
     mBytesWritten = 0;
     return true;
@@ -121,8 +127,9 @@ bool Mp3Writer::writeFrames(const int32_t* interleaved, size_t frameCount) {
     if (mFile == nullptr || mShine == nullptr || interleaved == nullptr) return false;
     for (size_t frame = 0; frame < frameCount; ++frame) {
         // int32 payload is left-justified 24-bit capture; the top 16 bits are the MP3 sample.
-        const int16_t left = static_cast<int16_t>(interleaved[frame * 2] >> 16);
-        const int16_t right = static_cast<int16_t>(interleaved[frame * 2 + 1] >> 16);
+        const int16_t left = static_cast<int16_t>(interleaved[frame * mChannels] >> 16);
+        const int16_t right = mChannels == 1 ? left
+            : static_cast<int16_t>(interleaved[frame * mChannels + 1] >> 16);
         pushDecimated(left, right);
     }
     return true;
@@ -140,8 +147,8 @@ void Mp3Writer::pushDecimated(int16_t left, int16_t right) {
         curLeft = outLeft;
         curRight = outRight;
     }
-    mStage[static_cast<size_t>(mStagedFrames) * 2] = clampToPcm16(curLeft);
-    mStage[static_cast<size_t>(mStagedFrames) * 2 + 1] = clampToPcm16(curRight);
+    mStage[static_cast<size_t>(mStagedFrames) * mChannels] = clampToPcm16(curLeft);
+    if (mChannels == 2) mStage[static_cast<size_t>(mStagedFrames) * mChannels + 1] = clampToPcm16(curRight);
     if (++mStagedFrames >= mPassSamples) encodeStagedPass();
 }
 
@@ -161,7 +168,7 @@ bool Mp3Writer::close() {
     if (mShine != nullptr) {
         if (mStagedFrames > 0) {
             // shine requires full passes; pad the final partial frame block with silence.
-            for (size_t i = static_cast<size_t>(mStagedFrames) * 2; i < mStage.size(); ++i) {
+            for (size_t i = static_cast<size_t>(mStagedFrames) * mChannels; i < mStage.size(); ++i) {
                 mStage[i] = 0;
             }
             encodeStagedPass();

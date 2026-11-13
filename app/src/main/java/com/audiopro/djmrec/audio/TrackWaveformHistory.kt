@@ -9,7 +9,7 @@ package com.audiopro.djmrec.audio
  * oldest first, then the committed-bin cursor modulo 1048576, then the bin length in ms.
  * Not thread-safe: feed and read it from one thread (the UI thread).
  */
-class TrackWaveformHistory(val capacity: Int = 640, val binsPerColumn: Int = 8) {
+class TrackWaveformHistory(override val capacity: Int = 640, val binsPerColumn: Int = 8) : WaveformHistory {
     private val columns = FloatArray(capacity * BANDS)
     private val pending = FloatArray(BANDS)
     private var pendingBins = 0
@@ -17,7 +17,7 @@ class TrackWaveformHistory(val capacity: Int = 640, val binsPerColumn: Int = 8) 
     private var sequence = -1
 
     /** Number of stored columns, at most [capacity]. */
-    var size = 0
+    override var size = 0
         private set
 
     /** Bumped whenever a column is added or the history is cleared. */
@@ -50,7 +50,7 @@ class TrackWaveformHistory(val capacity: Int = 640, val binsPerColumn: Int = 8) 
     }
 
     /** Band [band] (0 amplitude, 1 low, 2 mid, 3 high) of column [index]; 0 is the oldest. */
-    fun value(index: Int, band: Int): Float {
+    override fun value(index: Int, band: Int): Float {
         if (index !in 0 until size) return 0f
         val slot = (head - size + index + capacity) % capacity
         return columns[slot * BANDS + band]

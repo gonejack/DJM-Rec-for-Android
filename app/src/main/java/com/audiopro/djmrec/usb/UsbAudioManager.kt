@@ -32,12 +32,13 @@ data class UsbInputOption(
     val label: String,
     val hasPermission: Boolean,
     val captureCandidate: Boolean,
-    val interfaceNumber: Int? = null
+    val interfaceNumber: Int? = null,
+    val multiSelectable: Boolean = false
 ) {
     val selectionKey: String get() = "$deviceName:$interfaceNumber"
     fun matches(device: UsbAudioDeviceInfo?): Boolean =
         device?.deviceName == deviceName &&
-            (interfaceNumber == null || device.streamingInterfaceNumber == interfaceNumber)
+            (interfaceNumber == null || interfaceNumber in device.selectedInterfaceNumbers)
 }
 
 class UsbAudioManager(private val context: Context) {
@@ -63,7 +64,7 @@ class UsbAudioManager(private val context: Context) {
     private val _connectionNotice = MutableStateFlow<String?>(null)
     val connectionNotice = _connectionNotice.asStateFlow()
     private var requestedDeviceName: String? = null
-    private var requestedInterfaceNumber: Int? = null
+    private var requestedInterfaceNumbers: List<Int>? = null
     private val inputPreferences = context.getSharedPreferences("usb_inputs", Context.MODE_PRIVATE)
     private val inspectedInputs = mutableMapOf<String, List<UsbCaptureInput>>()
     private val diagnosticDevices = mutableSetOf<String>()
@@ -94,19 +95,26 @@ class UsbAudioManager(private val context: Context) {
             } else inputs.map { input ->
                 UsbInputOption(device.deviceName,
                     if (inputs.size > 1) "$product · ${input.name}" else product,
-                    usbManager.hasPermission(device), true, input.interfaceNumber)
+                    usbManager.hasPermission(device), true, input.interfaceNumber,
+                    device.vendorId == 0x0BDA && device.productId == 0x4F26)
             }
         }.sortedBy { it.label }
     }
 
     /** Caller must stop monitoring first. Never close an active raw capture here. */
     fun selectDevice(deviceName: String, interfaceNumber: Int? = null): Boolean {
-        if (activeIsoConnection != null) return false
+        if (activeIsoConnections.isNotEmpty()) return false
         val device = usbManager.deviceList[deviceName] ?: return false
         if (!isCaptureCandidate(device)) return false
         if (interfaceNumber != null && inspectedInputs[deviceName]?.none { it.interfaceNumber == interfaceNumber } != false) return false
+        val current = _deviceState.value
+        val selected = if (interfaceNumber == null) emptyList() else if (current?.deviceName == deviceName &&
+            device.vendorId == 0x0BDA && device.productId == 0x4F26 && current.requiresExplicitInterfaceSelection) {
+            UsbCaptureInputs.toggleSelection(current.selectedInterfaceNumbers, interfaceNumber)
+        } else listOf(interfaceNumber)
+        if (interfaceNumber != null && selected.isEmpty()) return false
         requestedDeviceName = deviceName
-        requestedInterfaceNumber = interfaceNumber
+        requestedInterfaceNumbers = selected.takeIf { it.isNotEmpty() }
         _deviceState.value = null
         onDeviceAttached(device)
         return true
@@ -117,9 +125,9 @@ class UsbAudioManager(private val context: Context) {
     /**
      * Kept open (not `.close()`'d) for as long as native libusb capture is running -- its fd
      * is handed to `libusb_wrap_sys_device()` on the native side, so closing it mid-capture
-     * would pull the fd out from under libusb. See [openIsoCaptureHandle]/[releaseIsoCaptureConnection].
+     * would pull the fd out from under libusb. See [openIsoCaptureHandles]/[releaseIsoCaptureConnection].
      */
-    private var activeIsoConnection: UsbDeviceConnection? = null
+    private val activeIsoConnections = mutableListOf<UsbDeviceConnection>()
 
     private val permissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -258,7 +266,7 @@ class UsbAudioManager(private val context: Context) {
         }
 
         Log.i(TAG, "UAC candidate attached: ${device.deviceName} (${device.vendorId}:${device.productId})")
-        if (requestedDeviceName != device.deviceName) requestedInterfaceNumber = null
+        if (requestedDeviceName != device.deviceName) requestedInterfaceNumbers = null
         requestedDeviceName = device.deviceName
         _connectionNotice.value = "Checking ${device.productName ?: "USB input"}..."
 
@@ -317,7 +325,7 @@ class UsbAudioManager(private val context: Context) {
         val topology: UacTopology
         val captureInputs: List<UsbCaptureInput>
         var clockSampleRates = emptyList<Int>()
-        var mixerProfile: PioneerMixerProfile? = null
+        var mixerProfile: PioneerMixerProfile?
         val bestInterface = try {
             rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
@@ -394,13 +402,21 @@ class UsbAudioManager(private val context: Context) {
                 .mapNotNull { intf -> intf.name?.takeIf { it.isNotBlank() }?.let { intf.id to it } }.toMap()
             captureInputs = UsbCaptureInputs.group(candidates, device.vendorId, device.productId, names)
             inspectedInputs[device.deviceName] = captureInputs
-            val savedInterface = inputPreferences.getInt(
-                UsbCaptureInputs.preferenceKey(device.vendorId, device.productId), -1
-            ).takeIf { it >= 0 }
-            val selected = UsbCaptureInputs.select(captureInputs, requestedInterfaceNumber ?: savedInterface)
+            val preferenceKey = UsbCaptureInputs.preferenceKey(device.vendorId, device.productId)
+            val savedInterfaces = inputPreferences.getString(preferenceKey + "_selected", null)
+                ?.let(UsbCaptureInputs::restoreSelection)
+                ?: inputPreferences.getInt(preferenceKey, -1).takeIf { it >= 0 }?.let(::listOf)
+            val selectedNumbers = requestedInterfaceNumbers ?: savedInterfaces
+            val selectedFormats = if (selectedNumbers == null) {
+                listOfNotNull(UsbCaptureInputs.select(captureInputs, null))
+            } else selectedNumbers.mapNotNull { number ->
+                UsbCaptureInputs.select(captureInputs, number)
+            }.takeIf { it.size == selectedNumbers.size }.orEmpty()
+            val selected = selectedFormats.firstOrNull()
             if (mixerProfile == null && selected != null) {
                 clockSampleRates = queryClockSampleRates(device, connection, topology, selected)
             }
+            requestedInterfaceNumbers = selectedFormats.map { it.interfaceNumber }
             selected
         } finally {
             // Inspection never keeps the descriptor/control connection alive.
@@ -450,10 +466,12 @@ class UsbAudioManager(private val context: Context) {
             isPioneer = isPioneerDevice(device),
             rawDescriptors = rawDescriptors,
             topology = topology,
-            captureInputs = captureInputs
+            captureInputs = captureInputs,
+            selectedInterfaceNumbers = requestedInterfaceNumbers.orEmpty()
         )
         inputPreferences.edit {
-            putInt(UsbCaptureInputs.preferenceKey(device.vendorId, device.productId), bestInterface.interfaceNumber)
+            putString(UsbCaptureInputs.preferenceKey(device.vendorId, device.productId) + "_selected",
+                requestedInterfaceNumbers.orEmpty().joinToString(","))
         }
         _connectionNotice.value = null
         refreshInputs()
@@ -533,7 +551,7 @@ class UsbAudioManager(private val context: Context) {
      * pulling isochronous transfers.
      *
      * IMPORTANT: unlike [inspectAndPublish]'s short-lived descriptor-reading connection, the
-     * connection opened here is deliberately kept alive in [activeIsoConnection] -- its fd is
+     * connections opened here are deliberately kept alive in [activeIsoConnections] -- their fds are
      * handed to `libusb_wrap_sys_device()`, and closing the connection while libusb still holds
      * that fd would pull capture out from under it. Call [releaseIsoCaptureConnection] once the
      * native side has fully torn down (after `AudioEngine.close()` returns).
@@ -591,91 +609,63 @@ class UsbAudioManager(private val context: Context) {
         }
     }
 
-    fun openIsoCaptureHandle(): UsbIsoCaptureHandle? {
-        val info = _deviceState.value ?: run {
-            Log.w(TAG, "openIsoCaptureHandle: no device currently published")
-            return null
-        }
+    fun openIsoCaptureHandles(): List<UsbIsoCaptureHandle>? {
+        val info = _deviceState.value ?: return null
         val device = usbManager.deviceList.values.firstOrNull {
             it.deviceName == info.deviceName && it.vendorId == info.vendorId && it.productId == info.productId
-        } ?: run {
-            Log.w(TAG, "openIsoCaptureHandle: ${info.deviceName} is no longer in UsbManager.deviceList")
-            return null
-        }
-        if (!usbManager.hasPermission(device)) {
-            Log.w(TAG, "openIsoCaptureHandle: no permission for ${device.deviceName}")
-            return null
-        }
+        } ?: return null
+        if (!usbManager.hasPermission(device) || activeIsoConnections.isNotEmpty()) return null
 
-        // A connection may still belong to an opening/closing native session. Only its owner
-        // can release it after AudioEngine.close(); never invalidate its fd here.
-        if (activeIsoConnection != null) {
-            Log.w(TAG, "openIsoCaptureHandle: previous capture has not released its connection")
-            return null
-        }
-
-        val connection = usbManager.openDevice(device)
-        if (connection == null) {
-            Log.e(TAG, "openIsoCaptureHandle: openDevice failed for ${device.deviceName}")
-            return null
-        }
-        activeIsoConnection = connection
-        info.pioneerMixerProfile?.let { profile ->
-            establishPioneerRoute(connection, profile)
-        }
+        val handles = mutableListOf<UsbIsoCaptureHandle>()
         val topology = info.topology
-        val streaming = topology?.audioStreamingInterfaces?.firstOrNull {
-            it.interfaceNumber == info.streamingInterfaceNumber && it.alternateSetting == info.activeAlternateSetting
+        for (number in info.selectedInterfaceNumbers) {
+            val primary = number == info.streamingInterfaceNumber
+            val streaming = if (primary) {
+                topology?.audioStreamingInterfaces?.firstOrNull {
+                    it.interfaceNumber == number && it.alternateSetting == info.activeAlternateSetting
+                }
+            } else info.captureInputs.firstOrNull { it.interfaceNumber == number }?.preferredFormat
+            if (!primary && (streaming == null || streaming.channelCount != 2 ||
+                    streaming.bitResolution != info.bitResolution)) {
+                releaseIsoCaptureConnection()
+                return null
+            }
+            val connection = usbManager.openDevice(device) ?: run {
+                releaseIsoCaptureConnection()
+                return null
+            }
+            activeIsoConnections += connection
+            if (primary) info.pioneerMixerProfile?.let { establishPioneerRoute(connection, it) }
+            val clock = if (info.pioneerMixerProfile == null && streaming != null && topology != null)
+                UsbCaptureInputs.clockFor(streaming, topology) else null
+            val alternate = if (primary) info.activeAlternateSetting else streaming!!.alternateSetting
+            handles += UsbIsoCaptureHandle(
+                fd = connection.fileDescriptor,
+                interfaceNumber = number,
+                alternateSetting = alternate,
+                endpointAddress = if (primary) info.isochronousInEndpointAddress
+                    else streaming!!.isochronousInEndpointAddress ?: -1,
+                maxPacketSize = if (primary) info.isochronousInMaxPacketSize
+                    else streaming!!.isochronousInMaxPacketSize ?: -1,
+                totalChannels = if (primary) info.channelCount else streaming!!.channelCount,
+                subframeSize = if (primary) info.subframeSize else streaming!!.subframeSize,
+                bitResolution = if (primary) info.bitResolution else streaming!!.bitResolution,
+                rawDescriptors = info.rawDescriptors,
+                clockControlInterfaceNumber = clock?.interfaceNumber ?: -1,
+                clockSourceId = clock?.id ?: -1,
+                clockSupportsFrequencySet = clock?.supportsFrequencySet == true,
+                feedbackEndpointAddress = streaming?.isochronousFeedbackEndpointAddress ?: -1,
+                feedbackMaxPacketSize = streaming?.isochronousFeedbackMaxPacketSize ?: -1,
+                vendorId = info.vendorId,
+                productId = info.productId
+            )
         }
-        // Supported Pioneer profiles use endpoint/vendor clock flow. Entity requests stall
-        // some firmware, including the A9, so native code measures the active stream cadence.
-        val clock = when {
-            info.pioneerMixerProfile != null -> null
-            streaming != null -> UsbCaptureInputs.clockFor(streaming, topology)
-            else -> null
-        }
-        Log.i(
-            TAG,
-            "openIsoCaptureHandle: if${info.streamingInterfaceNumber}/alt${info.activeAlternateSetting} " +
-                "terminal=${streaming?.terminalLink} clock=${clock?.id}@if${clock?.interfaceNumber} " +
-                "settable=${clock?.supportsFrequencySet}"
-        )
-
-        return UsbIsoCaptureHandle(
-            fd = connection.fileDescriptor,
-            interfaceNumber = info.streamingInterfaceNumber,
-            alternateSetting = info.activeAlternateSetting,
-            endpointAddress = info.isochronousInEndpointAddress,
-            maxPacketSize = info.isochronousInMaxPacketSize,
-            totalChannels = info.channelCount,
-            subframeSize = info.subframeSize,
-            bitResolution = info.bitResolution,
-            rawDescriptors = info.rawDescriptors,
-            clockControlInterfaceNumber = clock?.interfaceNumber ?: -1,
-            clockSourceId = clock?.id ?: -1,
-            clockSupportsFrequencySet = clock?.supportsFrequencySet == true,
-            feedbackEndpointAddress = info.streamingInterfaceNumber.let { interfaceNumber ->
-                info.topology?.audioStreamingInterfaces
-                    ?.firstOrNull { it.interfaceNumber == interfaceNumber && it.alternateSetting == info.activeAlternateSetting }
-                    ?.isochronousFeedbackEndpointAddress ?: -1
-            },
-            feedbackMaxPacketSize = info.streamingInterfaceNumber.let { interfaceNumber ->
-                info.topology?.audioStreamingInterfaces
-                    ?.firstOrNull { it.interfaceNumber == interfaceNumber && it.alternateSetting == info.activeAlternateSetting }
-                    ?.isochronousFeedbackMaxPacketSize ?: -1
-            },
-            vendorId = info.vendorId,
-            productId = info.productId
-        )
+        return handles.takeIf { it.isNotEmpty() }
     }
 
-    /**
-     * Closes the connection opened by [openIsoCaptureHandle], if any. Must only be called once
-     * native capture has fully stopped (i.e. after `AudioEngine.close()` returns) -- see that
-     * method's contract.
-     */
+    /** Called only after every native USB source has stopped using these descriptors. */
     fun releaseIsoCaptureConnection() {
-        activeIsoConnection?.close()
-        activeIsoConnection = null
+        activeIsoConnections.forEach(UsbDeviceConnection::close)
+        activeIsoConnections.clear()
     }
 }

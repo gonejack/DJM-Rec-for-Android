@@ -67,7 +67,9 @@ public:
      * before returning, which covers UAC2 devices that do not answer clock-frequency queries.
      * Returns the measured sample rate on success, or -1 on failure.
      */
-    int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint);
+    int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint,
+                   const std::vector<UsbIsoAudioSource::Config>& secondaryConfigs = {},
+                   bool independentInputs = false);
 
     // --- Multitrack (only when openUsbIso() ran with Config::emitAllChannels) ---
     /** Wire channels feeding the tracks, or 0 when multitrack is off. */
@@ -80,10 +82,15 @@ public:
     /** Bit t set once track t's writer failed; the master and the other tracks continue. */
     uint32_t getTrackErrorMask() const;
     void setTrackGainDb(int track, float gainDb);
+    /** Flat track-bus channel indices for Mix L/R; -1 mutes a side (None). */
+    void setMixSources(int leftChannel, int rightChannel);
+    /** Identical non-None sources encode as mono; all other routes encode as stereo. */
+    int getMixOutputChannelCount() const;
     void setTrackWaveformsEnabled(bool enabled);
     /** TrackBus::kLevelStride floats per channel; returns the channel count written. */
     int getTrackLevels(float* out, int maxChannels);
     void getTrackWaveformBins(int track, float* outBins) const;
+    void getTrackChannelWaveformBins(int channel, float* outBins) const;
     /** First channel of the pair recorded as the master; -1 while AUTO is still choosing. */
     int getMasterChannelOffset() const;
     int setPioneerTrackSource(int output, int source);
@@ -113,17 +120,19 @@ public:
     void closeEngine();
 
     /** [leftPeakDb, leftRmsDb, rightPeakDb, rightRmsDb] — safe to call from any thread. */
-    void getLevels(float outLevels[4]) const;
-    bool isClipping() const;
+    void getLevels(float outLevels[4]);
+    bool isClipping();
     int64_t getElapsedMillis() const;
     int32_t getXRunCount() const;
     void getUsbIsoTransferStats(uint64_t outStats[7]) const;
+    std::vector<uint64_t> getSecondaryInputBytes() const;
     std::string getDiagnosticSummary();
 
     /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 + 2 floats: bins, cursor, bin duration ms).
      *  Safe to call from any thread. */
     void getWaveformBins(float* outBins) const;
-    void setRecordingGainDb(int gainDb);
+    void getMixChannelWaveformBins(int channel, float* outBins) const;
+    void setRecordingGainDb(float gainDb);
     void setWaveformEnabled(bool enabled);
     /** Applies to the next startRecording*(): drop digital silence before the first audio. */
     void setTrimLeadingSilence(bool enabled);
@@ -152,6 +161,7 @@ private:
     }
 
     void encoderThreadLoop();
+    AudioFormatInfo mixOutputFormat() const;
     void resetSilenceGate();
     void publishSilenceGateState();
     /** Allocates the per-stream limiter and pre-record history once the format is known. */
@@ -171,6 +181,8 @@ private:
      *  the libusb event thread by UsbIsoAudioSource's callback. */
     void onUsbIsoFrames(const int32_t* interleavedStereo, const int32_t* allChannels,
                         int wireChannels, size_t frameCount);
+    void pushSecondaryFrames(size_t input, const int32_t* stereo, size_t frameCount);
+    void readSecondaryFrames(int32_t* interleaved, size_t frameCount);
     /** Encoder thread, writer lock held: writes each armed track from combined ring frames. */
     void writeTrackFrames(const int32_t* combined, size_t frameCount, std::vector<int32_t>& scratch);
     std::unique_ptr<AudioWriter> makeTrackWriter(int track, int fd, ContainerFormat format);
@@ -178,6 +190,17 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::unique_ptr<UsbIsoAudioSource> mUsbIsoSource;
+    std::vector<std::unique_ptr<UsbIsoAudioSource>> mSecondarySources;
+    struct SecondaryQueue {
+        std::vector<int32_t> samples;
+        size_t read = 0;
+        size_t write = 0;
+        size_t available = 0;
+        uint64_t droppedFrames = 0;
+        uint64_t missingFrames = 0;
+    };
+    std::mutex mSecondaryMutex;
+    std::vector<SecondaryQueue> mSecondaryQueues;
     std::string mLastUsbSetupFailure; // retained after failed source teardown; guarded by mControlMutex
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;
@@ -192,8 +215,11 @@ private:
     std::atomic<TrackBus*> mTrackBus{nullptr};
     std::atomic<bool> mTrackWaveformsEnabled{false};
     std::array<std::atomic<float>, TrackBus::kMaxTracks> mTrackGainLinear{};
+    // One atomic update keeps both output channels on the same routing revision.
+    std::atomic<uint32_t> mMixRoute{UINT32_MAX};
     int mTrackChannels = 0;   // wire channels in the track bus; fixed while a stream is open
-    int mRingChannels = 2;    // master channels + mTrackChannels, per recording-ring frame
+    int mRingChannels = 2;    // stereo Mix prefix + mTrackChannels, per recording-ring frame
+    int mRecordingOutputChannels = 2; // encoder snapshot, fixed until stop
     std::vector<TrackLayout> mTrackLayout;
     std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> mTrackWriters;        // mWriterMutex
     std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> mPendingTrackWriters; // mControlMutex
@@ -248,7 +274,10 @@ private:
     std::atomic<int32_t> mXRunCount{0};
     std::atomic<int64_t> mElapsedMillis{0};
 
-    // Meter state, updated every realtime callback, read by the UI's polling loop.
+    // All inputs share RMS ballistics and hold peaks/clips until the next UI poll.
+    std::array<ChannelMeter, 2> mMainMeters;
+    std::atomic<int> mMeterSampleRate{48000};
+    // Latest block values retained for diagnostics.
     std::atomic<float> mLeftPeakDb{-60.0f};
     std::atomic<float> mLeftRmsDb{-60.0f};
     std::atomic<float> mRightPeakDb{-60.0f};

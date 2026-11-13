@@ -94,6 +94,16 @@ class CubiluxCaptureInputTest {
         assertFalse(secondDevice.matches(device(2)))
     }
 
+    @Test
+    fun selectedPortsAreAllMarkedAndNamedInCaptureOrder() {
+        val selected = device(1).copy(selectedInterfaceNumbers = listOf(1, 2, 3))
+        assertEquals("CB5 · MIC1 + Line In + MIC2", selected.captureLabel)
+        assertTrue(UsbInputOption(selected.deviceName, "MIC1", true, true, 1).matches(selected))
+        assertTrue(UsbInputOption(selected.deviceName, "Line In", true, true, 2).matches(selected))
+        assertTrue(UsbInputOption(selected.deviceName, "MIC2", true, true, 3).matches(selected))
+        assertFalse(UsbInputOption("another-device", "MIC2", true, true, 3).matches(selected))
+    }
+
     private fun device(number: Int): UsbAudioDeviceInfo {
         val format = checkNotNull(UsbCaptureInputs.select(inputs, number))
         return UsbAudioDeviceInfo(

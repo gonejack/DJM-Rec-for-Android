@@ -3,6 +3,7 @@ package com.audiopro.djmrec.streaming
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.IOException
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Process-owned broadcast lifecycle; closing an Activity must not cancel stream finalization.
  * Tokens and stream credentials stay in memory and are never written to preferences.
@@ -113,7 +114,7 @@ class YouTubeBroadcastCoordinator {
                 session.studioUrl
             )
             try {
-                val rtmpState = withTimeoutOrNull(30_000L) {
+                val rtmpState = withTimeoutOrNull(30_000L.milliseconds) {
                     liveStreamState.first { state ->
                         state.platform == LivePlatform.YOUTUBE &&
                             (state.status == LiveStreamStatus.LIVE ||
@@ -218,7 +219,7 @@ class YouTubeBroadcastCoordinator {
                             )
                         }
                     }
-                delay(STATS_POLL_INTERVAL_MS)
+                delay(STATS_POLL_INTERVAL_MS.milliseconds)
             }
         }
     }

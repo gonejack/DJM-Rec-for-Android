@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.audiopro.djmrec.audio.ChannelLevel
 import com.audiopro.djmrec.audio.StereoLevels
-import com.audiopro.djmrec.audio.TrackWaveformHistory
+import com.audiopro.djmrec.audio.WaveformHistory
 import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.MeterAmber
@@ -39,7 +39,7 @@ import kotlin.math.floor
  */
 @Composable
 fun TimelineWaveform(
-    history: TrackWaveformHistory,
+    history: WaveformHistory,
     revision: State<Long>,
     dimmed: Boolean,
     recording: Boolean,
@@ -79,7 +79,7 @@ private class TimelinePathCache {
     private var builtRevision = -1L
     private var builtSize = Size.Zero
 
-    fun ensureBuilt(history: TrackWaveformHistory, revision: Long, size: Size) {
+    fun ensureBuilt(history: WaveformHistory, revision: Long, size: Size) {
         if (revision == builtRevision && size == builtSize) return
         paths.reset()
         val columnWidth = size.width / history.capacity
@@ -89,9 +89,9 @@ private class TimelinePathCache {
             val x = size.width - (count - index) * columnWidth
             if (x + columnWidth < 0f) continue
             paths.addColumn(x, x + columnWidth + 0.5f, center, center * 0.92f,
-                ThreeBand.lowExtent(history.value(index, 1)),
-                ThreeBand.midExtent(history.value(index, 2)),
-                ThreeBand.highExtent(history.value(index, 3)))
+                WaveformDisplayScale.extent(ThreeBand.lowExtent(history.value(index, 1))),
+                WaveformDisplayScale.extent(ThreeBand.midExtent(history.value(index, 2))),
+                WaveformDisplayScale.extent(ThreeBand.highExtent(history.value(index, 3))))
         }
         builtRevision = revision
         builtSize = size

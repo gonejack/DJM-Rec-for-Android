@@ -5,12 +5,9 @@
 #include <cstdint>
 #include <oboe/Oboe.h>
 
-namespace djmrec {
+#include "MeterBallistics.h"
 
-/** Floor of the UI's dBFS scale; matches the VU meter's [-60, 0] dB requirement. */
-constexpr float kMeterFloorDb = -60.0f;
-/** Samples at or above this normalized magnitude are flagged as clipping (~-0.3 dBFS headroom). */
-constexpr float kClipThreshold = 0.966f;
+namespace djmrec {
 
 struct StereoMeterReading {
     float leftPeakDb = kMeterFloorDb;
@@ -21,23 +18,14 @@ struct StereoMeterReading {
 };
 
 /**
- * Converts a linear amplitude ratio (0..1) into a clamped dBFS value for the VU meter.
- * 0 amplitude maps to the floor rather than -inf so the UI never has to special-case silence.
- */
-inline float amplitudeToDb(float amplitude) {
-    if (amplitude <= 0.0f) return kMeterFloorDb;
-    const float db = 20.0f * log10f(amplitude);
-    return std::max(kMeterFloorDb, std::min(0.0f, db));
-}
-
-/**
  * Computes peak + RMS levels per stereo channel directly from the raw interleaved buffer
  * pulled off the ring buffer, without any allocation — called every audio callback so it
  * must stay allocation-free and branch-predictable.
  */
 class MeterCalculator {
 public:
-    static StereoMeterReading analyze(const void* interleaved, int32_t frameCount, oboe::AudioFormat format) {
+    static StereoMeterReading analyze(const void* interleaved, int32_t frameCount, oboe::AudioFormat format,
+                                      ChannelMeter* meters = nullptr, double rmsAlpha = 1.0) {
         StereoMeterReading reading;
         float leftPeak = 0.0f, rightPeak = 0.0f;
         double leftSumSq = 0.0, rightSumSq = 0.0;
@@ -88,6 +76,10 @@ public:
         }
 
         if (frameCount > 0) {
+            if (meters) {
+                meters[0].push(leftPeak, leftSumSq / frameCount, rmsAlpha);
+                meters[1].push(rightPeak, rightSumSq / frameCount, rmsAlpha);
+            }
             reading.leftRmsDb = amplitudeToDb(static_cast<float>(std::sqrt(leftSumSq / frameCount)));
             reading.rightRmsDb = amplitudeToDb(static_cast<float>(std::sqrt(rightSumSq / frameCount)));
         }

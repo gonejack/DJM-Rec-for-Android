@@ -26,7 +26,7 @@ class RecordingStoragePolicyTest {
 
     @Test
     fun `track files live in a folder named after the set`() {
-        assertEquals("Music/DJMRec/mix_20260814_120000 tracks", RecordingOutputManager.trackFolder("20260814_120000"))
+        assertEquals("Music/DJMRec/mix_20260814_120000_tracks", RecordingOutputManager.trackFolder("20260814_120000"))
     }
 
     @Test

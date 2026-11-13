@@ -12,6 +12,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import kotlin.time.Duration.Companion.milliseconds
 
 internal const val YOUTUBE_CDN_RESOLUTION = "variable"
 internal const val YOUTUBE_CDN_FRAME_RATE = "variable"
@@ -148,7 +149,7 @@ object StreamingSetupRepository {
             if (SystemClock.elapsedRealtime() >= ingestDeadline) {
                 throw IOException("YouTube did not detect the RTMP feed within 90 seconds")
             }
-            delay(YOUTUBE_POLL_INTERVAL_MS)
+            delay(YOUTUBE_POLL_INTERVAL_MS.milliseconds)
         }
 
         val currentStatus = youtubeBroadcastStatus(session)
@@ -171,7 +172,7 @@ object StreamingSetupRepository {
             if (SystemClock.elapsedRealtime() >= transitionDeadline) {
                 throw IOException("YouTube broadcast did not become live within 60 seconds")
             }
-            delay(YOUTUBE_POLL_INTERVAL_MS)
+            delay(YOUTUBE_POLL_INTERVAL_MS.milliseconds)
         }
     }
 

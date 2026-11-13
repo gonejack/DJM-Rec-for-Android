@@ -2,7 +2,6 @@ package com.audiopro.djmrec.ui
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.SystemClock
 import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
@@ -14,7 +13,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,9 +34,31 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,9 +69,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.audiopro.djmrec.audio.AudioGain
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.streaming.LivePlatform
 import com.audiopro.djmrec.streaming.LiveStreamStatus
@@ -53,6 +84,7 @@ import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 /** These Compose overlays are local UI siblings of the camera surface, never encoder filters. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,7 +105,7 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
 
     fun openUrl(url: String) {
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
     }
     fun shareUrl(url: String) {
         val share = Intent(Intent.ACTION_SEND).apply {
@@ -97,7 +129,7 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
         onDispose { view.keepScreenOn = previous }
     }
     DisposableEffect(Unit) { onDispose { viewModel.detachLivePreview() } }
-    LaunchedEffect(Unit) { while (true) { now = SystemClock.elapsedRealtime(); delay(1000) } }
+    LaunchedEffect(Unit) { while (true) { now = SystemClock.elapsedRealtime(); delay(1000.milliseconds) } }
     // Back leaves the console WITHOUT ending the stream — the console is a view on a running
     // service stream. Ending the stream is always the explicit red button.
     BackHandler { if (settings) settings = false else viewModel.cameraConsoleOpen.value = false }
@@ -134,9 +166,9 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                         }
                         LiveDot(live.status)
                         Text(
-                            when {
-                                live.status == LiveStreamStatus.LIVE && live.localOnly -> "REC · Phone"
-                                live.status == LiveStreamStatus.LIVE -> "LIVE · ${live.platform?.label.orEmpty()}"
+                            when (live.status) {
+                                LiveStreamStatus.LIVE if live.localOnly -> "REC · Phone"
+                                LiveStreamStatus.LIVE -> "LIVE · ${live.platform?.label.orEmpty()}"
                                 else -> live.status.name.replace('_', ' ')
                             },
                             style = MaterialTheme.typography.labelLarge,
@@ -278,12 +310,12 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Keep screen awake"); Switch(awake, { awake = it })
             }
-            Text("Mixer gain: ${if (gain > 0) "+" else ""}$gain dB")
-            Slider(value = gain.toFloat(), onValueChange = { viewModel.setRecordingGainDb(it.roundToInt()) },
-                valueRange = 0f..12f, steps = 11,
-                enabled = recording is RecordingState.Monitoring && !saving)
-            Text(if (recording is RecordingState.Monitoring) "Gain changes the audio sent to viewers. Watch for clipping."
-                else "Gain is locked while recording or saving a set.", style = MaterialTheme.typography.bodySmall)
+            Text("Mix gain: ${AudioGain.format(gain)}")
+            Slider(value = gain, onValueChange = viewModel::setRecordingGainDb,
+                valueRange = AudioGain.MIN_DB..AudioGain.MAX_DB, steps = AudioGain.SLIDER_STEPS,
+                enabled = AudioGain.canAdjust(recording, saving))
+            Text(if (AudioGain.canAdjust(recording, saving)) "Gain changes apply immediately to the audio sent to viewers. Watch for clipping."
+                else "Gain is temporarily unavailable while preparing or saving.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

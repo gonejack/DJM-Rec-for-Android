@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "../UsbAudioEngine.h"
 
@@ -22,7 +23,7 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_setRecordingGainDb(
-    JNIEnv*, jobject, jint gainDb) {
+    JNIEnv*, jobject, jfloat gainDb) {
     UsbAudioEngine::instance().setRecordingGainDb(gainDb);
 }
 
@@ -75,6 +76,56 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
         }
     }
     return UsbAudioEngine::instance().openUsbIso(config, sampleRateHint);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIsoMulti(
+    JNIEnv* env, jobject, jintArray packedConfigs, jbyteArray rawDescriptors, jint sampleRateHint) {
+    constexpr int kFields = 16;
+    if (!packedConfigs || !rawDescriptors) return -1;
+    const jsize length = env->GetArrayLength(packedConfigs);
+    if (length < kFields || length > kFields * 3 || length % kFields != 0) return -1;
+    std::vector<jint> values(static_cast<size_t>(length));
+    env->GetIntArrayRegion(packedConfigs, 0, length, values.data());
+    if (env->ExceptionCheck()) return -1;
+    const jsize byteCount = env->GetArrayLength(rawDescriptors);
+    std::vector<uint8_t> descriptors(static_cast<size_t>(byteCount));
+    if (byteCount > 0) env->GetByteArrayRegion(rawDescriptors, 0, byteCount,
+        reinterpret_cast<jbyte*>(descriptors.data()));
+    if (env->ExceptionCheck()) return -1;
+
+    std::vector<djmrec::UsbIsoAudioSource::Config> configs;
+    for (jsize offset = 0; offset < length; offset += kFields) {
+        const jint* p = values.data() + offset;
+        if (p[14] != 0x0BDA || p[15] != 0x4F26 || p[5] != 2) return -1;
+        djmrec::UsbIsoAudioSource::Config config;
+        config.fd = p[0];
+        config.interfaceNumber = p[1];
+        config.alternateSetting = p[2];
+        config.endpointAddress = p[3];
+        config.maxPacketSize = p[4];
+        config.totalChannels = p[5];
+        config.subframeSize = p[6];
+        config.bitResolution = p[7];
+        config.extractChannelOffset = p[8];
+        config.clockControlInterfaceNumber = p[9];
+        config.clockSourceId = p[10];
+        config.clockSupportsFrequencySet = p[11] != 0;
+        config.feedbackEndpointAddress = p[12];
+        config.feedbackMaxPacketSize = p[13];
+        config.vendorId = p[14];
+        config.productId = p[15];
+        config.requestedSampleRate = sampleRateHint;
+        config.rawDescriptors = descriptors;
+        configs.push_back(std::move(config));
+    }
+    for (size_t i = 0; i < configs.size(); ++i) {
+        for (size_t j = i + 1; j < configs.size(); ++j) {
+            if (configs[i].interfaceNumber == configs[j].interfaceNumber) return -1;
+        }
+    }
+    return UsbAudioEngine::instance().openUsbIso(configs.front(), sampleRateHint,
+        {configs.begin() + 1, configs.end()}, /*independentInputs=*/true);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -187,6 +238,15 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getXRunCount(JNIEnv* /*env*/, jobject
 }
 
 JNIEXPORT jlongArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getSecondaryInputBytes(JNIEnv* env, jobject) {
+    const auto counts = UsbAudioEngine::instance().getSecondaryInputBytes();
+    jlongArray result = env->NewLongArray(static_cast<jsize>(counts.size()));
+    std::vector<jlong> values(counts.begin(), counts.end());
+    if (!values.empty()) env->SetLongArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+    return result;
+}
+
+JNIEXPORT jlongArray JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_getUsbIsoTransferStats(JNIEnv* env, jobject /*thiz*/) {
     uint64_t stats[7]{};
     UsbAudioEngine::instance().getUsbIsoTransferStats(stats);
@@ -211,6 +271,17 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getWaveformBins(JNIEnv* env, jobject 
     float bins[kFloats];
     UsbAudioEngine::instance().getWaveformBins(bins);
 
+    jfloatArray result = env->NewFloatArray(kFloats);
+    env->SetFloatArrayRegion(result, 0, kFloats, bins);
+    return result;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getMixChannelWaveformBins(
+    JNIEnv* env, jobject /*thiz*/, jint channel) {
+    constexpr int kFloats = UsbAudioEngine::kWaveformBinCount * 4 + 2;
+    float bins[kFloats];
+    UsbAudioEngine::instance().getMixChannelWaveformBins(channel, bins);
     jfloatArray result = env->NewFloatArray(kFloats);
     env->SetFloatArrayRegion(result, 0, kFloats, bins);
     return result;
@@ -279,6 +350,11 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getTrackChannelCount(JNIEnv* /*env*/,
     return UsbAudioEngine::instance().getTrackChannelCount();
 }
 
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getMixOutputChannelCount(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().getMixOutputChannelCount();
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_prepareTrackFd(
     JNIEnv* /*env*/, jobject /*thiz*/, jint track, jint fd, jint format) {
@@ -310,6 +386,12 @@ Java_com_audiopro_djmrec_audio_AudioEngine_setTrackGainDb(
 }
 
 JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setMixSources(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint leftChannel, jint rightChannel) {
+    UsbAudioEngine::instance().setMixSources(leftChannel, rightChannel);
+}
+
+JNIEXPORT void JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_setTrackWaveformsEnabled(
     JNIEnv* /*env*/, jobject /*thiz*/, jboolean enabled) {
     UsbAudioEngine::instance().setTrackWaveformsEnabled(enabled == JNI_TRUE);
@@ -333,6 +415,17 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getTrackWaveformBins(
     constexpr int kFloats = UsbAudioEngine::kWaveformBinCount * 4 + 2;
     float bins[kFloats];
     UsbAudioEngine::instance().getTrackWaveformBins(track, bins);
+    jfloatArray result = env->NewFloatArray(kFloats);
+    env->SetFloatArrayRegion(result, 0, kFloats, bins);
+    return result;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getTrackChannelWaveformBins(
+    JNIEnv* env, jobject /*thiz*/, jint channel) {
+    constexpr int kFloats = UsbAudioEngine::kWaveformBinCount * 4 + 2;
+    float bins[kFloats];
+    UsbAudioEngine::instance().getTrackChannelWaveformBins(channel, bins);
     jfloatArray result = env->NewFloatArray(kFloats);
     env->SetFloatArrayRegion(result, 0, kFloats, bins);
     return result;

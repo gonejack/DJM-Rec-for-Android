@@ -77,6 +77,12 @@ object AudioEngine {
         multitrack: Boolean
     ): Int
 
+    /** CB5: 1–3 stereo interfaces in selection order, each using the same track bus. */
+    external fun openUsbIsoMulti(configs: IntArray, rawDescriptors: ByteArray, sampleRateHint: Int): Int
+
+    /** Selects processed track channels for the stereo Mix, including video and live AAC audio. */
+    external fun setMixSources(leftChannel: Int, rightChannel: Int)
+
     /**
      * Begins pulling from the ring buffer into the selected encoder and writing to [outputPath].
      * [format] is [RecordingFormat.nativeValue].
@@ -130,6 +136,9 @@ object AudioEngine {
     /** [completed, missed, empty, partial, bytes, nonZeroBytes, resubmitFailures] for raw USB capture. */
     external fun getUsbIsoTransferStats(): LongArray
 
+    /** Received USB payload bytes for each additional selected input. */
+    external fun getSecondaryInputBytes(): LongArray
+
     /** Structured native pipeline/session snapshot included in release diagnostic reports. */
     external fun getDiagnosticSummary(): String
 
@@ -142,8 +151,11 @@ object AudioEngine {
      */
     external fun getWaveformBins(): FloatArray
 
-    /** Enables native frequency analysis for the optional live waveform. */
-    external fun setRecordingGainDb(gainDb: Int)
+    /** Actual Mix output for one side (0 left, 1 right), after Mix gain and limiting. */
+    external fun getMixChannelWaveformBins(channel: Int): FloatArray
+
+    /** 0..12 dB, including half-decibel values; applies to the actual Mix output. */
+    external fun setRecordingGainDb(gainDb: Float)
 
     external fun setWaveformEnabled(enabled: Boolean)
 
@@ -184,6 +196,9 @@ object AudioEngine {
     /** Wire channels feeding the tracks, or 0 when multitrack is off. */
     external fun getTrackChannelCount(): Int
 
+    /** Mix file/live encoder channels: 1 for identical sources, otherwise 2 (including None). */
+    external fun getMixOutputChannelCount(): Int
+
     /** Opens track [track]'s file for the next [startRecordingFd]; call while not recording. */
     external fun prepareTrackFd(track: Int, fd: Int, format: Int): Boolean
 
@@ -195,7 +210,7 @@ object AudioEngine {
     /** Bit t is set once track t's file failed; the master and the other tracks continue. */
     external fun getTrackErrorMask(): Int
 
-    /** -24..+12 dB. Above 0 dB the track's own limiter keeps peaks under -1 dBFS. */
+    /** 0..+12 dB. Above 0 dB the track's own limiter keeps peaks under -1 dBFS. */
     external fun setTrackGainDb(track: Int, gainDb: Float)
 
     external fun setTrackWaveformsEnabled(enabled: Boolean)
@@ -208,6 +223,9 @@ object AudioEngine {
 
     /** Same layout as [getWaveformBins], for one track. */
     external fun getTrackWaveformBins(track: Int): FloatArray
+
+    /** Same layout, for one flat input channel without merging the stereo pair. */
+    external fun getTrackChannelWaveformBins(channel: Int): FloatArray
 
     /** First channel of the pair recorded as the master; -1 while AUTO is still choosing. */
     external fun getMasterChannelOffset(): Int

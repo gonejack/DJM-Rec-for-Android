@@ -11,6 +11,13 @@ data class UsbCaptureInput(
 }
 
 object UsbCaptureInputs {
+    /** Removing keeps the remaining order; selecting again appends a new last track. */
+    fun toggleSelection(selected: List<Int>, interfaceNumber: Int): List<Int> =
+        if (interfaceNumber in selected) selected - interfaceNumber else selected + interfaceNumber
+
+    fun restoreSelection(saved: String): List<Int> =
+        saved.split(',').mapNotNull { it.toIntOrNull() }.distinct()
+
     fun group(
         formats: List<AudioStreamingInterfaceInfo>,
         vendorId: Int,

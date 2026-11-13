@@ -7,6 +7,7 @@ import android.media.MediaCodec
 import android.os.SystemClock
 import android.util.Log
 import android.view.SurfaceView
+import com.audiopro.djmrec.audio.AudioEngine
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.CodecErrorCallback
 import com.pedro.encoder.input.sources.video.Camera2Source
@@ -175,7 +176,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
             }
         }
         val videoSource = createVideoSource(config, sourceFailure)
-        val audioSource = DjmPcmAudioSource(sampleRate, sourceFailure) { totalBytes, peakDb ->
+        val outputChannels = AudioEngine.getMixOutputChannelCount()
+        val audioSource = DjmPcmAudioSource(sampleRate, outputChannels, sourceFailure) { totalBytes, peakDb ->
             _state.update { state ->
                 if (state.isActive) state.copy(audioPcmBytes = totalBytes, audioPeakDb = peakDb)
                 else state
@@ -202,9 +204,9 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 setReTries(MAX_RECONNECT_ATTEMPTS)
                 setCheckServerAlive(true)
             }
-            check(candidate.prepareAudio(sampleRate = audioFormat.encoderRate, isStereo = true,
+            check(candidate.prepareAudio(sampleRate = audioFormat.encoderRate, isStereo = outputChannels == 2,
                 bitrate = audioBitrate)) {
-                "AAC audio preparation failed at ${audioFormat.encoderRate} Hz stereo. Check device encoder support."
+                "AAC audio preparation failed at ${audioFormat.encoderRate} Hz / $outputChannels ch. Check device encoder support."
             }
             check(prepareVideo(candidate, config, recordVideo)) {
                 if (config.videoMode == LiveVideoMode.ARTWORK) "Artwork/H.264 preparation failed. Choose a readable image."

@@ -12,6 +12,7 @@ import android.graphics.SurfaceTexture
 import android.view.Surface
 import com.pedro.encoder.input.sources.video.VideoSource
 import kotlin.math.min
+import androidx.core.net.toUri
 
 /** User-selected still image source used when DJ only wants to broadcast mixer audio. */
 class ArtworkVideoSource(
@@ -19,7 +20,7 @@ class ArtworkVideoSource(
     artworkUri: String,
     private val onFailure: (String) -> Unit
 ) : VideoSource() {
-    private val artworkUri = Uri.parse(artworkUri)
+    private val artworkUri = artworkUri.toUri()
     @Volatile
     private var running = false
     private var worker: Thread? = null

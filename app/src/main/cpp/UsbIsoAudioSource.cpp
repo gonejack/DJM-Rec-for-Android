@@ -401,11 +401,17 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     }
 
     // CB5 ports each have a different clock source. Do not label an unverified stream
-    // with a guessed rate after a failed control request.
-    if (config.vendorId == 0x0BDA && config.productId == 0x4F26 &&
-        mConfirmedClockRate != config.requestedSampleRate) {
-        stop();
-        return "Could not verify the selected CB5 input's requested sample rate";
+    // with a guessed rate after a failed control request. Release the shared AudioControl
+    // interface once configured so another selected port can verify its own clock.
+    if (config.vendorId == 0x0BDA && config.productId == 0x4F26) {
+        if (mConfirmedClockRate != config.requestedSampleRate) {
+            stop();
+            return "Could not verify the selected CB5 input's requested sample rate";
+        }
+        if (mClaimedClockControlInterface >= 0) {
+            libusb_release_interface(mHandle, mClaimedClockControlInterface);
+            mClaimedClockControlInterface = -1;
+        }
     }
 
     rc = libusb_claim_interface(mHandle, config.interfaceNumber);

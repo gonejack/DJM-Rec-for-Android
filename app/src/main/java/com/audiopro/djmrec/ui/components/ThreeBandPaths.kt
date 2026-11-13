@@ -13,6 +13,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * rekordbox's 3-band detail waveform (the CDJ-3000 "3Band" look). The analyzer's levels are
@@ -44,6 +45,11 @@ internal object ThreeBand {
         if (high <= mid && high <= low) 2 else if (mid <= low) 1 else 0
 }
 
+/** Fixed display curve makes quiet input visible while digital silence stays flat. */
+internal object WaveformDisplayScale {
+    fun extent(level: Float): Float = level.coerceIn(0f, 1f).pow(0.35f)
+}
+
 /**
  * The nested regions as one path per band set. Each column is painted outside-in: the longest
  * band's span, then the two longest bands' span over it, then the all-three span, so the
@@ -52,7 +58,7 @@ internal object ThreeBand {
 internal class ThreeBandPaths {
     private val paths = Array(8) { Path() }
 
-    fun reset() = paths.forEach { it.reset() }
+    fun reset() = paths.forEach { it.rewind() }
 
     /**
      * Adds the column from [x0] to [x1]. Extents are fractions of [height] above and below

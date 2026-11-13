@@ -30,5 +30,30 @@ int main() {
     } while (!done.load());
     producer.join();
     assert(std::fabs(analyzer.binDurationMillis() - 6.125f) < 0.001f);
-    std::cout << "Concurrent waveform history and cursor checks passed\n";
+    analyzer.reset();
+    std::vector<int32_t> leftOnly(294 * 2 * 4, 0);
+    for (size_t frame = 0; frame < leftOnly.size() / 2; ++frame)
+        leftOnly[frame * 2] = static_cast<int32_t>(1000000000.0 * std::sin(frame * 0.1));
+    analyzer.pushFrames(leftOnly.data(), leftOnly.size() / 2);
+    std::array<float, 2048> left{}, right{}, combined{};
+    uint32_t leftCursor = 0, rightCursor = 0;
+    analyzer.getChannelBins(0, left.data(), &leftCursor);
+    analyzer.getChannelBins(1, right.data(), &rightCursor);
+    analyzer.getBins(combined.data());
+    assert(leftCursor == 4 && rightCursor == 4);
+    assert(left[2044] > 0.4f);
+    for (int i = 0; i < 2048; ++i) {
+        assert(right[i] == 0.0f);
+        assert(combined[i] == left[i]);
+    }
+    analyzer.reset();
+    analyzer.getChannelBins(0, left.data(), &leftCursor);
+    analyzer.getChannelBins(1, right.data(), &rightCursor);
+    assert(leftCursor == 0 && rightCursor == 0);
+    for (int i = 0; i < 2048; ++i) assert(left[i] == 0.0f && right[i] == 0.0f);
+    analyzer.pushFrames(leftOnly.data(), leftOnly.size() / 2, 2, 0, 1);
+    analyzer.getChannelBins(0, left.data());
+    analyzer.getChannelBins(1, right.data());
+    assert(left == right);
+    std::cout << "Concurrent waveform, isolated channels, reset and mono checks passed\n";
 }

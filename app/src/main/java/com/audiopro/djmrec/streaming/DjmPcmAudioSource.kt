@@ -9,9 +9,10 @@ import com.pedro.encoder.input.sources.audio.AudioSource
 import kotlin.math.abs
 import kotlin.math.log10
 
-/** Supplies RootEncoder with stereo PCM16 copied from native DJM capture, never phone mic. */
+/** Supplies RootEncoder with Mix PCM16 copied from native DJM capture, never phone mic. */
 class DjmPcmAudioSource(
     private val captureSampleRate: Int,
+    private val outputChannelCount: Int,
     private val onFailure: (String) -> Unit,
     private val onPcmStats: (totalBytes: Long, peakDb: Float) -> Unit
 ) : AudioSource() {
@@ -30,7 +31,8 @@ class DjmPcmAudioSource(
         noiseSuppressor: Boolean
     ): Boolean {
         pcmSampleRate = sampleRate
-        return isStereo && StreamAudioFormat.fromCapture(captureSampleRate)?.encoderRate == sampleRate && AudioEngine.isStreamOpen()
+        return outputChannelCount in 1..2 && isStereo == (outputChannelCount == 2) &&
+            StreamAudioFormat.fromCapture(captureSampleRate)?.encoderRate == sampleRate && AudioEngine.isStreamOpen()
     }
 
     override fun start(getMicrophoneData: GetMicrophoneData) {
@@ -44,7 +46,7 @@ class DjmPcmAudioSource(
         worker = Thread({
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             val buffer = ByteArray(inputSize)
-            val clock = PcmFrameClock(pcmSampleRate)
+            val clock = PcmFrameClock(pcmSampleRate, outputChannelCount)
             val converter = StereoPcmDownsampler(captureSampleRate, pcmSampleRate)
             var lastPcmAt = android.os.SystemClock.elapsedRealtime()
             var totalBytes = 0L
@@ -62,7 +64,8 @@ class DjmPcmAudioSource(
                             intervalPeak = maxOf(intervalPeak, abs(sample).coerceAtMost(32_767))
                             index += 2
                         }
-                        val encodedPcm = converter.convert(buffer, bytesRead)
+                        val encodedPcm = MixPcmOutput.pack(converter.convert(buffer, bytesRead), outputChannelCount)
+                        if (encodedPcm.isEmpty()) continue
                         getMicrophoneData.inputPCMData(
                             // Encoder queues frames asynchronously. Each owns its PCM until consumed.
                             Frame(encodedPcm, 0, encodedPcm.size,

@@ -80,6 +80,7 @@ import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.SurfaceVariantDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
+import androidx.core.net.toUri
 
 /**
  * First-run setup stepper. Collects every permission DJM REC needs (microphone, notifications,
@@ -334,7 +335,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
                                     onClick = {
                                         val request = Intent(
                                             Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                            Uri.parse("package:${context.packageName}")
+                                            "package:${context.packageName}".toUri()
                                         )
                                         runCatching { settingsLauncher.launch(request) }
                                             .onFailure {

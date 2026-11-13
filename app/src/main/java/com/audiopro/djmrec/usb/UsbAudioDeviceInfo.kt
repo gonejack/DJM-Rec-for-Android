@@ -38,7 +38,9 @@ data class UsbAudioDeviceInfo(
     /** True if [vendorId] matches a known Pioneer/AlphaTheta USB vendor ID. */
     val isPioneer: Boolean = false,
     /** Physical capture inputs, each with its own alternate PCM formats. */
-    val captureInputs: List<UsbCaptureInput> = emptyList()
+    val captureInputs: List<UsbCaptureInput> = emptyList(),
+    /** Selected physical USB streaming interfaces, in capture order. */
+    val selectedInterfaceNumbers: List<Int> = listOf(streamingInterfaceNumber)
 ) {
     val preferredSampleRate: Int
         get() = negotiatedSampleRate.takeIf { it > 0 }
@@ -67,11 +69,17 @@ data class UsbAudioDeviceInfo(
      */
     val requiresExplicitInterfaceSelection: Boolean get() = captureInputs.size > 1
 
-    val inputName: String?
-        get() = captureInputs.firstOrNull { it.interfaceNumber == streamingInterfaceNumber }?.name
+    /** CB5 exposes independent stereo interfaces, all recorded through the same track bus. */
+    val recordsSelectedInputs: Boolean
+        get() = vendorId == 0x0BDA && productId == 0x4F26 && requiresExplicitInterfaceSelection
 
     val captureLabel: String
-        get() = if (requiresExplicitInterfaceSelection) "$productName · $inputName" else productName
+        get() = if (requiresExplicitInterfaceSelection) {
+            val names = selectedInterfaceNumbers.mapNotNull { number ->
+                captureInputs.firstOrNull { it.interfaceNumber == number }?.name
+            }
+            "$productName · ${names.joinToString(" + ")}"
+        } else productName
 
     /** Android's device id cannot identify an interface within a multi-input USB device. */
     fun useAndroidCapture(forceAndroidCapture: Boolean): Boolean =
@@ -102,7 +110,7 @@ data class AudioStreamingInterfaceInfo(
 /**
  * Everything the native libusb raw-isochronous capture path
  * ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) needs, bundled together by
- * [UsbAudioManager.openIsoCaptureHandle].
+ * [UsbAudioManager.openIsoCaptureHandles].
  */
 data class UsbIsoCaptureHandle(
     /** `UsbDeviceConnection.getFileDescriptor()` -- the connection producing this fd must stay

@@ -108,6 +108,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val recordingState by viewModel.recordingState.collectAsState()
     val liveState by viewModel.liveStreamState.collectAsState()
+    val mixRoute by viewModel.mixRoute.collectAsState()
     val setupState by viewModel.streamSetupState.collectAsState()
     val youtubeBroadcast by viewModel.youtubeBroadcastState.collectAsState()
     var platform by rememberSaveable { mutableStateOf(LivePlatform.YOUTUBE) }
@@ -473,6 +474,10 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 Text("${videoMode.label} / $orientationLabel")
                                 Text(streamQuality.detail)
                                 Text(device?.productName ?: "No mixer selected")
+                                if (device?.recordsSelectedInputs == true) {
+                                    Text("Audio: Mix · L ← ${com.audiopro.djmrec.audio.StereoMixRoute.sourceLabel(mixRoute.leftChannel)} / " +
+                                        "R ← ${com.audiopro.djmrec.audio.StereoMixRoute.sourceLabel(mixRoute.rightChannel)}")
+                                }
                                 Text(
                                     when {
                                         captureReady -> health.message
@@ -495,7 +500,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         if (!localOnly && videoMode != LiveVideoMode.ARTWORK) {
                             GoLiveSwitch(
                                 title = "Save video to phone",
-                                detail = "Keeps an MP4 of the camera with 320 kbps mixer audio in Movies/DJMRec, at full " +
+                                detail = "Keeps an MP4 of the camera with 320 kbps Mix audio in Movies/DJMRec, at full " +
                                     "quality even when the stream has to lower its bitrate.",
                                 checked = saveVideo,
                                 onChange = { saveVideo = it }

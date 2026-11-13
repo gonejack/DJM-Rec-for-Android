@@ -1,10 +1,8 @@
 package com.audiopro.djmrec.service
 
 import android.Manifest
-
 import android.app.Notification
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -30,7 +28,9 @@ import com.audiopro.djmrec.DjmRecApplication
 import com.audiopro.djmrec.MainActivity
 import com.audiopro.djmrec.R
 import com.audiopro.djmrec.audio.AudioEngine
+import com.audiopro.djmrec.audio.AudioGain
 import com.audiopro.djmrec.audio.ChannelLevel
+import com.audiopro.djmrec.audio.MultitrackLayout
 import com.audiopro.djmrec.audio.RecordingFormat
 import com.audiopro.djmrec.audio.RecordingHealth
 import com.audiopro.djmrec.audio.RecordingHealthEvaluator
@@ -38,7 +38,7 @@ import com.audiopro.djmrec.audio.RecordingHealthInput
 import com.audiopro.djmrec.audio.RecordingHealthLevel
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.audio.StereoLevels
-import com.audiopro.djmrec.audio.MultitrackLayout
+import com.audiopro.djmrec.audio.StereoMixRoute
 import com.audiopro.djmrec.audio.TrackRecordingPlan
 import com.audiopro.djmrec.storage.PendingRecordingOutput
 import com.audiopro.djmrec.storage.RecordingOutputManager
@@ -128,7 +128,7 @@ class RecordingService : LifecycleService() {
         private const val MP3_COPY_BYTES_PER_SECOND = 40_000L
 
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
-        /** `UsbDeviceConnection.getFileDescriptor()`; see [com.audiopro.djmrec.usb.UsbAudioManager.openIsoCaptureHandle]. */
+        /** `UsbDeviceConnection.getFileDescriptor()`; see [com.audiopro.djmrec.usb.UsbAudioManager.openIsoCaptureHandles]. */
         const val EXTRA_USB_FD = "extra_usb_fd"
         const val EXTRA_USB_INTERFACE = "extra_usb_interface"
         const val EXTRA_USB_ALT_SETTING = "extra_usb_alt_setting"
@@ -145,6 +145,9 @@ class RecordingService : LifecycleService() {
         const val EXTRA_USB_VENDOR_ID = "extra_usb_vendor_id"
         const val EXTRA_USB_PRODUCT_ID = "extra_usb_product_id"
         const val EXTRA_USB_RAW_DESCRIPTORS = "extra_usb_raw_descriptors"
+        const val EXTRA_USB_MULTI_CONFIGS = "extra_usb_multi_configs"
+        const val EXTRA_MIX_LEFT_CHANNEL = "extra_mix_left_channel"
+        const val EXTRA_MIX_RIGHT_CHANNEL = "extra_mix_right_channel"
 
         private const val TAG = "RecordingService"
         private const val CHANNEL_ID = "recording_channel"
@@ -190,6 +193,8 @@ class RecordingService : LifecycleService() {
     private val emptyWaveform = FloatArray(0)
     private val _waveformBins = MutableStateFlow(emptyWaveform)
     val waveformBins: StateFlow<FloatArray> = _waveformBins.asStateFlow()
+    private val _mixChannelWaveforms = MutableStateFlow<List<FloatArray>>(emptyList())
+    val mixChannelWaveforms: StateFlow<List<FloatArray>> = _mixChannelWaveforms.asStateFlow()
 
     private val _health = MutableStateFlow(RecordingHealth.Ready)
     val health: StateFlow<RecordingHealth> = _health.asStateFlow()
@@ -204,6 +209,8 @@ class RecordingService : LifecycleService() {
     /** One waveform snapshot per track (AudioEngine.getTrackWaveformBins layout). */
     private val _trackWaveforms = MutableStateFlow<List<FloatArray>>(emptyList())
     val trackWaveforms: StateFlow<List<FloatArray>> = _trackWaveforms.asStateFlow()
+    private val _trackChannelWaveforms = MutableStateFlow<List<FloatArray>>(emptyList())
+    val trackChannelWaveforms: StateFlow<List<FloatArray>> = _trackChannelWaveforms.asStateFlow()
     /** First channel of the pair recorded as the master; -1 until known. */
     private val _masterChannelOffset = MutableStateFlow(-1)
     val masterChannelOffset: StateFlow<Int> = _masterChannelOffset.asStateFlow()
@@ -235,6 +242,8 @@ class RecordingService : LifecycleService() {
     private var trackBytesPerSecond = 0L
     private var pendingTrackPlan = TrackRecordingPlan.NONE
     private var multitrackSession = false
+    private var independentInputsSession = false
+    @Volatile private var mixRoute = StereoMixRoute()
     @Volatile private var multitrackVisible = false
     private var currentSessionId: String? = null
     private var currentPartIndex = 0
@@ -253,6 +262,8 @@ class RecordingService : LifecycleService() {
     @Volatile private var waveformVisible = false
     private var lastCheckpointRealtime = 0L
     private var lastUsbStats = LongArray(7)
+    private var lastSecondaryPackets = longArrayOf()
+    private var secondaryStalledChecks = 0
     private var usbHealthInitialized = false
     private var stalledUsbChecks = 0
     private var lastXRunCount = 0
@@ -290,6 +301,12 @@ class RecordingService : LifecycleService() {
                     if (multitrackVisible && multitrackSession) {
                         val tracks = MultitrackLayout.tracks(_trackChannels.value).size
                         _trackWaveforms.value = List(tracks) { AudioEngine.getTrackWaveformBins(it) }
+                        if (independentInputsSession) {
+                            _mixChannelWaveforms.value = List(2) { AudioEngine.getMixChannelWaveformBins(it) }
+                            _trackChannelWaveforms.value = List(_trackChannels.value) {
+                                AudioEngine.getTrackChannelWaveformBins(it)
+                            }
+                        }
                     }
                     monitorHandler.postDelayed(this, WAVEFORM_UPDATE_INTERVAL_MS)
                 }
@@ -323,6 +340,12 @@ class RecordingService : LifecycleService() {
                     if (currentCompanion != null) MP3_COPY_BYTES_PER_SECOND else 0L
             )
             val stats = AudioEngine.getUsbIsoTransferStats()
+            val secondaryCounts = if (independentInputsSession) AudioEngine.getSecondaryInputBytes() else longArrayOf()
+            val secondaryStalled = secondaryCounts.isNotEmpty() &&
+                secondaryCounts.size == lastSecondaryPackets.size &&
+                secondaryCounts.indices.any { secondaryCounts[it] <= lastSecondaryPackets[it] }
+            lastSecondaryPackets = secondaryCounts
+            secondaryStalledChecks = if (secondaryStalled) secondaryStalledChecks + 1 else 0
             val packetDelta = if (usbHealthInitialized) stats.getOrElse(0) { 0 } - lastUsbStats.getOrElse(0) { 0 } else 1
             val byteDelta = if (usbHealthInitialized) stats.getOrElse(4) { 0 } - lastUsbStats.getOrElse(4) { 0 } else 1
             val nonZeroDelta = if (usbHealthInitialized) stats.getOrElse(5) { 0 } - lastUsbStats.getOrElse(5) { 0 } else 1
@@ -332,7 +355,7 @@ class RecordingService : LifecycleService() {
             val xRunDelta = (xRunCount - lastXRunCount).coerceAtLeast(0)
             val battery = batteryStatus()
             val thermal = runCatching {
-                (getSystemService(Context.POWER_SERVICE) as PowerManager).currentThermalStatus
+                (getSystemService(POWER_SERVICE) as PowerManager).currentThermalStatus
             }.getOrDefault(0)
             if (thermal != _thermalStatus.value) {
                 _thermalStatus.value = thermal
@@ -371,6 +394,10 @@ class RecordingService : LifecycleService() {
                 checkpointIfDue()
                 stopIfSilentTooLong()
                 when {
+                    independentInputsSession && AudioEngine.getTrackErrorMask() != 0 ->
+                        requestSafetyStop("A selected input track could not be written. Recording finalized safely.", captureLost = false)
+                    independentInputsSession && secondaryStalledChecks >= MAX_STALLED_USB_CHECKS ->
+                        requestSafetyStop("A selected USB input stopped sending audio. Recording finalized safely.", captureLost = true)
                     health.level == RecordingHealthLevel.ERROR ->
                         requestSafetyStop(health.message, captureLost = !AudioEngine.isStreamOpen())
                     health.level == RecordingHealthLevel.LOW_STORAGE ->
@@ -388,7 +415,7 @@ class RecordingService : LifecycleService() {
      * power, or a hot battery) counts as not charging, since the set still drains the battery.
      */
     private fun batteryStatus(): Pair<Int?, Boolean> = runCatching {
-        val battery = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val battery = getSystemService(BATTERY_SERVICE) as BatteryManager
         val percent = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }
         val status = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
         percent to (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL)
@@ -397,7 +424,7 @@ class RecordingService : LifecycleService() {
     /** Ends a set left running after the music stopped (e.g. forgotten at the end of the night). */
     private fun stopIfSilentTooLong() {
         if (_state.value !is RecordingState.Recording || _saving.value) return
-        val minutes = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val minutes = getSharedPreferences("settings", MODE_PRIVATE)
             .getInt(PREF_SILENCE_AUTO_STOP_MINUTES, DEFAULT_SILENCE_AUTO_STOP_MINUTES)
         if (minutes <= 0) return
         if (AudioEngine.getTrailingSilenceMillis() < minutes * 60_000L) return
@@ -435,7 +462,7 @@ class RecordingService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        setRecordingGainDb(getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("recording_gain_db", 12))
+        setRecordingGainDb(AudioGain.fromStored(getSharedPreferences("settings", MODE_PRIVATE).all[AudioGain.PREFERENCE_KEY]))
         applyCapturePreferences()
         createNotificationChannel()
         lifecycleScope.launch {
@@ -449,7 +476,7 @@ class RecordingService : LifecycleService() {
         monitorHandler = Handler(monitorThread.looper)
         liveStreamController = LiveStreamController(this)
         lifecycleScope.launch {
-            var lastDiagnosticStatus: com.audiopro.djmrec.streaming.LiveStreamStatus? = null
+            var lastDiagnosticStatus: LiveStreamStatus? = null
             liveStreamController.state.collect {
                 val statusChanged = it.status != lastDiagnosticStatus
                 if (statusChanged) {
@@ -457,7 +484,7 @@ class RecordingService : LifecycleService() {
                 }
                 _liveState.value = it
                 (application as DjmRecApplication).youtubeCoordinator.updateLiveState(it)
-                if (statusChanged && it.status == com.audiopro.djmrec.streaming.LiveStreamStatus.PREPARING &&
+                if (statusChanged && it.status == LiveStreamStatus.PREPARING &&
                     it.platform == LivePlatform.YOUTUBE) (application as DjmRecApplication).youtubeCoordinator.startYouTubeLifecycle()
                 if (!it.isActive && cameraForegroundActive) {
                     cameraForegroundActive = false
@@ -506,8 +533,14 @@ class RecordingService : LifecycleService() {
         }
     }
 
-    /** -24..+12 dB per track; applies immediately, also while recording. */
+    /** 0..+12 dB per track; applies immediately. */
     fun setTrackGainDb(track: Int, gainDb: Float) = AudioEngine.setTrackGainDb(track, gainDb)
+
+    fun setMixSources(route: StereoMixRoute) {
+        mixRoute = route
+        AudioEngine.setMixSources(route.leftChannel, route.rightChannel)
+        if (AudioEngine.isStreamOpen()) updateRecordingFormat(currentSampleRate, currentBitDepth)
+    }
 
     /**
      * Routes Pioneer USB output [output] to [source] for multitrack. Blocking USB control
@@ -522,9 +555,12 @@ class RecordingService : LifecycleService() {
 
     private fun resetMultitrackState() {
         multitrackSession = false
+        independentInputsSession = false
         _trackChannels.value = 0
         _trackLevels.value = FloatArray(0)
         _trackWaveforms.value = emptyList()
+        _trackChannelWaveforms.value = emptyList()
+        _mixChannelWaveforms.value = emptyList()
         _masterChannelOffset.value = -1
     }
 
@@ -535,8 +571,8 @@ class RecordingService : LifecycleService() {
         else TrackRecordingPlan.NONE
     }
 
-    fun setRecordingGainDb(gainDb: Int) {
-        AudioEngine.setRecordingGainDb(gainDb)
+    fun setRecordingGainDb(gainDb: Float) {
+        AudioEngine.setRecordingGainDb(AudioGain.snap(gainDb))
     }
 
     /** Pushes the limiter and pre-record settings to the native engine; safe at any time. */
@@ -548,8 +584,12 @@ class RecordingService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        if (intent?.hasExtra(EXTRA_MIX_LEFT_CHANNEL) == true && intent.hasExtra(EXTRA_MIX_RIGHT_CHANNEL)) {
+            setMixSources(StereoMixRoute(intent.getIntExtra(EXTRA_MIX_LEFT_CHANNEL, 0),
+                intent.getIntExtra(EXTRA_MIX_RIGHT_CHANNEL, 1)))
+        }
         if (intent?.hasExtra(EXTRA_RECORDING_GAIN_DB) == true) {
-            setRecordingGainDb(intent.getIntExtra(EXTRA_RECORDING_GAIN_DB, 12))
+            setRecordingGainDb(intent.getFloatExtra(EXTRA_RECORDING_GAIN_DB, 12f))
         }
         if (_saving.value && intent?.action != ACTION_STOP_ALL && intent?.action != ACTION_DEVICE_DETACHED &&
             intent?.action != ACTION_STOP_LIVE) return START_NOT_STICKY
@@ -600,7 +640,8 @@ class RecordingService : LifecycleService() {
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
                         sampleRateHint = sampleRate,
                         monitorOnly = true,
-                        multitrack = intent.getBooleanExtra(EXTRA_MULTITRACK, false)
+                        multitrack = intent.getBooleanExtra(EXTRA_MULTITRACK, false),
+                        multiConfigs = intent.getIntArrayExtra(EXTRA_USB_MULTI_CONFIGS) ?: intArrayOf()
                     )
                 } else {
                     val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
@@ -661,7 +702,8 @@ class RecordingService : LifecycleService() {
                         sampleRateHint = sampleRate,
                         format = format,
                         monitorOnly = false,
-                        multitrack = intent.getBooleanExtra(EXTRA_MULTITRACK, false)
+                        multitrack = intent.getBooleanExtra(EXTRA_MULTITRACK, false),
+                        multiConfigs = intent.getIntArrayExtra(EXTRA_USB_MULTI_CONFIGS) ?: intArrayOf()
                     )
                 } else {
                     val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
@@ -821,12 +863,14 @@ class RecordingService : LifecycleService() {
         sampleRateHint: Int,
         format: RecordingFormat = RecordingFormat.WAV,
         monitorOnly: Boolean = false,
-        multitrack: Boolean = false
+        multitrack: Boolean = false,
+        multiConfigs: IntArray = intArrayOf()
     ) {
         if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
         _state.value = RecordingState.Preparing
         isUsbIsoSession = true
         resetMultitrackState()
+        independentInputsSession = multiConfigs.isNotEmpty()
         isMonitoringOnly = monitorOnly
         currentBitDepth = bitDepth
         currentOutputChannels = 2
@@ -841,7 +885,9 @@ class RecordingService : LifecycleService() {
         sessionOpening = true
         monitorHandler.post {
             try {
-                val negotiatedRate = AudioEngine.openUsbIso(
+                val negotiatedRate = if (multiConfigs.isNotEmpty()) {
+                    AudioEngine.openUsbIsoMulti(multiConfigs, rawDescriptors, sampleRateHint)
+                } else AudioEngine.openUsbIso(
                     fd, interfaceNumber, alternateSetting, endpointAddress, maxPacketSize,
                     totalChannels, subframeSize, bitDepth, channelOffset,
                     clockControlInterfaceNumber, clockSourceId, clockSupportsFrequencySet,
@@ -853,6 +899,10 @@ class RecordingService : LifecycleService() {
                     failPreparation("Failed to open USB isochronous capture")
                     releaseIsoConnectionIfNeeded()
                     return@post
+                }
+                if (independentInputsSession) {
+                    val route = mixRoute.validated(AudioEngine.getTrackChannelCount() / 2)
+                    AudioEngine.setMixSources(route.leftChannel, route.rightChannel)
                 }
                 updateRecordingFormat(negotiatedRate, bitDepth)
                 _trackChannels.value = AudioEngine.getTrackChannelCount()
@@ -982,6 +1032,17 @@ class RecordingService : LifecycleService() {
         val trackPlan = pendingTrackPlan
         pendingTrackPlan = TrackRecordingPlan.NONE
         val tracks = if (multitrackSession) prepareTrackOutputs(sessionId, format, trackPlan) else emptyMap()
+        if (independentInputsSession && tracks.size != trackPlan.tracks.size) {
+            runCatching { output.descriptor.close() }
+            RecordingOutputManager.abandon(this, output)
+            companion?.let { RecordingOutputManager.abandon(this, it) }
+            tracks.values.forEach { RecordingOutputManager.abandon(this, it) }
+            AudioEngine.clearPendingCompanion()
+            AudioEngine.clearPendingTracks()
+            RecordingSessionStore.complete(this)
+            failEncoding("Could not prepare every armed input track")
+            return
+        }
         val started = AudioEngine.startRecordingFd(output.descriptor.fd, format.nativeValue)
         runCatching { output.descriptor.close() }
         if (!started) {
@@ -1023,6 +1084,9 @@ class RecordingService : LifecycleService() {
         startPolling()
     }
 
+    /** Every physical input has a track file; the stereo Mix has its own encoder. */
+    private fun trackFileNumber(track: Int): Int = track + 1
+
     /**
      * Creates and journals one file per planned track and hands each to the native engine.
      * Track files are lossless; an MP3 set records its tracks as FLAC. A failure skips only
@@ -1039,16 +1103,16 @@ class RecordingService : LifecycleService() {
         currentTrackLabels.clear()
         val prepared = sortedMapOf<Int, PendingRecordingOutput>()
         plan.tracks.zip(plan.labels).forEach { (track, label) ->
-            val output = RecordingOutputManager.createTrack(this, sessionId, track + 1, label, trackFormat, 1)
+            val output = RecordingOutputManager.createTrack(this, sessionId, trackFileNumber(track), label, trackFormat, 1)
             if (output == null) {
-                Log.w(TAG, "Could not create track ${track + 1}; recording without it")
+                Log.w(TAG, "Could not create track ${trackFileNumber(track)}; recording without it")
                 return@forEach
             }
             val journaled = runCatching { RecordingSessionStore.addPart(this, output.toRecord()) }.isSuccess
             val opened = journaled && AudioEngine.prepareTrackFd(track, output.descriptor.fd, trackFormat.nativeValue)
             runCatching { output.descriptor.close() }
             if (!opened) {
-                Log.w(TAG, "Track ${track + 1} could not be opened; recording without it")
+                Log.w(TAG, "Track ${trackFileNumber(track)} could not be opened; recording without it")
                 RecordingOutputManager.abandon(this, output)
                 if (journaled) runCatching { RecordingSessionStore.markFinalized(this, output.uri) }
                 return@forEach
@@ -1075,6 +1139,7 @@ class RecordingService : LifecycleService() {
     }
 
     private fun updateRecordingFormat(sampleRate: Int, bitDepth: Int) {
+        currentOutputChannels = AudioEngine.getMixOutputChannelCount()
         currentSampleRate = sampleRate
         (application as DjmRecApplication).usbAudioManager.updateNegotiatedSampleRate(sampleRate)
         currentBitDepth = bitDepth
@@ -1099,6 +1164,8 @@ class RecordingService : LifecycleService() {
 
     private fun resetHealthTracking() {
         lastUsbStats = LongArray(7)
+        lastSecondaryPackets = longArrayOf()
+        secondaryStalledChecks = 0
         usbHealthInitialized = false
         stalledUsbChecks = 0
         lastXRunCount = 0
@@ -1142,7 +1209,7 @@ class RecordingService : LifecycleService() {
         val nextTracks = sortedMapOf<Int, PendingRecordingOutput>()
         if (currentTrackFormat == RecordingFormat.WAV) currentTrackOutputs.keys.forEach { track ->
             val label = currentTrackLabels[track].orEmpty()
-            val part = RecordingOutputManager.createTrack(this, sessionId, track + 1, label, RecordingFormat.WAV, nextIndex)
+            val part = RecordingOutputManager.createTrack(this, sessionId, trackFileNumber(track), label, RecordingFormat.WAV, nextIndex)
                 ?: return@forEach
             if (AudioEngine.prepareTrackRollFd(track, part.descriptor.fd, RecordingFormat.WAV.nativeValue)) {
                 nextTracks[track] = part

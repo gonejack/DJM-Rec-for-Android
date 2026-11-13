@@ -38,7 +38,7 @@ public:
 
     /**
      * Called from the realtime audio callback (or libusb event thread) for
-     * every captured frame batch. Analyzes stereo → mono, runs the three IIR
+     * every captured frame batch. Analyzes each channel independently, runs the three IIR
      * filters per-sample, and accumulates the peak and band peaks into the current
      * display bin. When kFramesPerBin samples have been accumulated the bin
      * is committed and the next bin begins.
@@ -64,6 +64,9 @@ public:
      * (PWV7 byte / 128). Each value is normalized to [0, 1]. Safe to call from any thread.
      */
     void getBins(float* outBins, uint32_t* sequence = nullptr) const;
+
+    /** Same snapshot for one side (0 left, 1 right), without merging stereo peaks. */
+    void getChannelBins(int channel, float* outBins, uint32_t* sequence = nullptr) const;
 
     /** Resets all filter state and clears the bin buffer (e.g. on new session). */
     // Call only while the audio producer is stopped.
@@ -128,17 +131,19 @@ private:
 
     // Per-bin accumulators (written by realtime thread, swapped atomically).
     struct BinAccum {
-        float peakAbs = 0.0f;    // max absolute amplitude this bin
-        float bandPeak[3] = {};  // max |low|, |mid|, |high| over both channels
+        float peakAbs[2] = {};      // per-channel maximum amplitude
+        float bandPeak[2][3] = {};  // per-channel low, mid and high peaks
         int sampleCount = 0;
     };
-    float mEnvelope[3] = {};     // realtime thread: band peak envelopes
+    float mEnvelope[2][3] = {};  // realtime thread: per-channel band envelopes
     float mReleasePerBin[3] = {};
 
     // Atomic rolling history, oldest bin first when read.
     BinAccum mCurrent;
     static constexpr int kRingCount = kBinCount * 2;
     std::atomic<float> mBins[kRingCount * 4];
+    std::atomic<float> mChannelBins[2][kRingCount * 4];
+    void readBins(const std::atomic<float>* source, float* outBins, uint32_t* sequence) const;
     std::atomic<uint32_t> mCommitted{0};
     int mFramesPerBin = 294;
     float mBinDurationMillis = 1000.0f / 163.0f;

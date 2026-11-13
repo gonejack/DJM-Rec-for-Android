@@ -15,7 +15,7 @@ struct shine_global_flags;
 namespace djmrec {
 
 /**
- * Real-time MPEG Layer III (MP3) writer: 320 kbps CBR stereo (the best valid lower rate
+ * Real-time MPEG Layer III (MP3) writer: 320 kbps CBR mono/stereo (the best valid lower rate
  * for sub-32 kHz capture), backed by the shine fixed-point encoder. The engine feeds
  * left-justified, int32-interleaved PCM (see AudioWriter.h); shine consumes interleaved
  * int16 at <= 48 kHz, so samples are shifted down to 16 bit and 88.2/96/176.4/192 kHz
@@ -56,6 +56,7 @@ private:
     FILE* mFile = nullptr;
     shine_global_flags* mShine = nullptr;
     int mPassSamples = 0;
+    int mChannels = 2;
     int mDecimatorStages = 0;
     Decimator mDecL[2];
     Decimator mDecR[2];

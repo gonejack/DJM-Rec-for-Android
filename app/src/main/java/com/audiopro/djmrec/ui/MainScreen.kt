@@ -5,15 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,7 +27,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -50,8 +46,7 @@ private enum class Destination(val route: String, val label: String, val icon: I
     RECORDING("record", "Record", Icons.Filled.FiberManualRecord),
     LIVE("live", "Go Live", Icons.Filled.LiveTv),
     RECORDINGS("recordings", "Recordings", Icons.Filled.LibraryMusic),
-    SETTINGS("settings", "Settings", Icons.Filled.Settings),
-    SUPPORT("support", "Support & diagnostics", Icons.Filled.BugReport)
+    SETTINGS("settings", "Settings", Icons.Filled.Settings)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,16 +117,11 @@ fun MainScreen(viewModel: MainViewModel) {
                     )
                 },
                 actions = {
-                    var menuOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = TextPrimary)
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            leadingIcon = { Icon(Icons.Filled.BugReport, contentDescription = null, tint = TextSecondary) },
-                            text = { Text("Support & diagnostics") },
-                            onClick = { menuOpen = false; selectedDestination = Destination.SUPPORT }
-                        )
+                    IconButton(onClick = {
+                        selectedDestination = Destination.RECORDING
+                        viewModel.powerSaveActive.value = true
+                    }) {
+                        Icon(Icons.Filled.BatterySaver, contentDescription = "Power saving mode", tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
@@ -157,7 +147,6 @@ fun MainScreen(viewModel: MainViewModel) {
                         Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
                         Destination.RECORDINGS -> LibraryScreen(onBack = null)
                         Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                        Destination.SUPPORT -> DiagnosticsScreen()
                     }
                 }
             }
