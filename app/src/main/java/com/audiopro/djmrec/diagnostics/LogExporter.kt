@@ -45,7 +45,6 @@ object LogExporter {
         sb.appendLine("generated: $timestamp")
         sb.appendLine("app version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         sb.appendLine("build type: ${BuildConfig.BUILD_TYPE} debug=${BuildConfig.DEBUG}")
-        sb.appendLine("Google OAuth client ID: ${BuildConfig.GOOGLE_OAUTH_CLIENT_ID}")
         sb.appendLine("device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, API ${Build.VERSION.SDK_INT})")
         sb.appendLine("hardware: ${Build.HARDWARE} board=${Build.BOARD} supportedAbis=${Build.SUPPORTED_ABIS.toList()}")
         sb.appendLine()

@@ -365,7 +365,6 @@ class RecordingService : LifecycleService() {
                 )
             )
             _health.value = health
-            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.health("${health.level}: ${health.message}")
 
             stalledUsbChecks = if (isUsbIsoSession && packetDelta <= 0) stalledUsbChecks + 1 else 0
             if (recording) {
@@ -432,13 +431,6 @@ class RecordingService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        lifecycleScope.launch {
-            _state.collect { state ->
-                com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("RecordingState", state.toString())
-                if (state is RecordingState.Error)
-                    com.audiopro.djmrec.diagnostics.RemoteDiagnostics.issue("Recording failure", state.toString())
-            }
-        }
         setRecordingGainDb(getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("recording_gain_db", 12))
         applyCapturePreferences()
         createNotificationChannel()
@@ -458,9 +450,6 @@ class RecordingService : LifecycleService() {
                 val statusChanged = it.status != lastDiagnosticStatus
                 if (statusChanged) {
                     lastDiagnosticStatus = it.status
-                    com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("Streaming", "${it.status}: ${it.message}")
-                    if (it.status == com.audiopro.djmrec.streaming.LiveStreamStatus.ERROR)
-                        com.audiopro.djmrec.diagnostics.RemoteDiagnostics.issue("Streaming failure", it.message)
                 }
                 _liveState.value = it
                 (application as DjmRecApplication).youtubeCoordinator.updateLiveState(it)
@@ -857,9 +846,6 @@ class RecordingService : LifecycleService() {
                 )
                 if (abandonStaleOpen(token)) return@post
                 if (negotiatedRate <= 0) {
-                    com.audiopro.djmrec.diagnostics.RemoteDiagnostics.health(
-                        "ERROR: Failed to open USB isochronous capture", AudioEngine.getDiagnosticSummary()
-                    )
                     failPreparation("Failed to open USB isochronous capture")
                     releaseIsoConnectionIfNeeded()
                     return@post

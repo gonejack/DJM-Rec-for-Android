@@ -11,7 +11,7 @@ enum class LivePlatform(
     YOUTUBE(
         "YouTube",
         "rtmps://a.rtmps.youtube.com/live2",
-        "Connect Google to create a private, unlisted, or public broadcast automatically.",
+        "Create a broadcast in YouTube Studio, then paste its server address and stream key.",
         "https://studio.youtube.com/"
     ),
     MIXCLOUD(

@@ -54,8 +54,7 @@ class UsbAudioManager(private val context: Context) {
     private val diagnosticDevices = mutableSetOf<String>()
 
     private fun trace(device: UsbDevice, stage: String, detail: String = "") =
-        com.audiopro.djmrec.diagnostics.RemoteDiagnostics.usbEvent(device.deviceName,
-            device.productName ?: "Unknown USB device", device.vendorId, device.productId, stage, detail)
+        Log.d(TAG, "${device.productName ?: "Unknown USB device"}; stage=$stage; $detail")
 
     fun refreshInputs() {
         val connected = usbManager.deviceList.values
@@ -117,7 +116,6 @@ class UsbAudioManager(private val context: Context) {
 
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     val device = getIntentDevice(intent) ?: return
-                    com.audiopro.djmrec.diagnostics.RemoteDiagnostics.usbDetached(device.deviceName)
                     if (_deviceState.value?.deviceName == device.deviceName) {
                         Log.i(TAG, "Mixer detached: ${device.deviceName}")
                         _deviceState.value = null
@@ -294,7 +292,6 @@ class UsbAudioManager(private val context: Context) {
         var mixerProfile: PioneerMixerProfile? = null
         val bestInterface = try {
             rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
-            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.descriptors(device.vendorId, device.productId, rawDescriptors, device.deviceName)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
             topology = UsbAudioDescriptorParser.parseTopology(rawDescriptors)

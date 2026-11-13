@@ -10,11 +10,10 @@ import android.os.IBinder
 import android.util.Log
 import android.view.SurfaceView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.DjmRecApplication
-import com.audiopro.djmrec.audio.AudioEngine
 import com.audiopro.djmrec.audio.ChannelLevel
 import com.audiopro.djmrec.audio.MultitrackLayout
 import com.audiopro.djmrec.audio.RecordingFormat
@@ -22,37 +21,29 @@ import com.audiopro.djmrec.audio.RecordingHealth
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.audio.StereoLevels
 import com.audiopro.djmrec.service.RecordingService
+import com.audiopro.djmrec.streaming.LivePlatform
 import com.audiopro.djmrec.streaming.LiveStreamConfig
 import com.audiopro.djmrec.streaming.LiveStreamQuality
 import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
-import com.audiopro.djmrec.streaming.LivePlatform
-import com.audiopro.djmrec.streaming.StreamSetupState
-import com.audiopro.djmrec.streaming.StreamSetupStatus
-import com.audiopro.djmrec.streaming.StreamingSetupRepository
 import com.audiopro.djmrec.streaming.YouTubePrivacy
-import com.audiopro.djmrec.streaming.YouTubeBroadcastState
-import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
-import com.audiopro.djmrec.streaming.YouTubeFinishResult
-import com.audiopro.djmrec.streaming.YouTubeLiveSession
 import com.audiopro.djmrec.usb.PioneerTrackRouting
 import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.IOException
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Wires the USB device stream, the bound [RecordingService], and the Compose UI together.
@@ -88,7 +79,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (service.state.value is RecordingState.Monitoring || service.state.value is RecordingState.Error) {
                 sendCommand(RecordingService.ACTION_STOP)
-                if (withTimeoutOrNull(5_000L) { service.state.first { it is RecordingState.Idle } } == null) {
+                if (withTimeoutOrNull(5_000L.milliseconds) { service.state.first { it is RecordingState.Idle } } == null) {
                     _recordingState.value = RecordingState.Error("Input change timed out. Reconnect your device.")
                     return@launch
                 }
@@ -162,42 +153,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val onboardingComplete: StateFlow<Boolean> = _onboardingComplete.asStateFlow()
 
     fun completeOnboarding() {
-        prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETE, true).apply()
+        prefs.edit { putBoolean(KEY_ONBOARDING_COMPLETE, true) }
         _onboardingComplete.value = true
     }
 
-    fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
-    fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
-    fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
+    fun setKeepScreenOn(value: Boolean) { prefs.edit { putBoolean("keep_screen_on", value) }; keepScreenOn.value = value }
+    fun setSmoothWaveform(value: Boolean) { prefs.edit { putBoolean("smooth_waveform", value) }; smoothWaveform.value = value }
+    fun setConfirmStop(value: Boolean) { prefs.edit { putBoolean("confirm_stop", value) }; confirmStop.value = value }
     fun setTrimLeadingSilence(value: Boolean) {
-        prefs.edit().putBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, value).apply()
+        prefs.edit { putBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, value) }
         trimLeadingSilence.value = value
     }
     fun setSafetyLimiter(value: Boolean) {
-        prefs.edit().putBoolean(RecordingService.PREF_SAFETY_LIMITER, value).apply()
+        prefs.edit { putBoolean(RecordingService.PREF_SAFETY_LIMITER, value) }
         safetyLimiter.value = value
         boundService?.applyCapturePreferences()
     }
     fun setPreRecord(value: Boolean) {
-        prefs.edit().putBoolean(RecordingService.PREF_PRE_RECORD, value).apply()
+        prefs.edit { putBoolean(RecordingService.PREF_PRE_RECORD, value) }
         preRecord.value = value
         boundService?.applyCapturePreferences()
     }
     fun setMp3Copy(value: Boolean) {
-        prefs.edit().putBoolean(RecordingService.PREF_MP3_COPY, value).apply()
+        prefs.edit { putBoolean(RecordingService.PREF_MP3_COPY, value) }
         mp3Copy.value = value
     }
     fun setSilenceAutoStopMinutes(minutes: Int) {
-        prefs.edit().putInt(RecordingService.PREF_SILENCE_AUTO_STOP_MINUTES, minutes.coerceAtLeast(0)).apply()
+        prefs.edit {
+            putInt(
+                RecordingService.PREF_SILENCE_AUTO_STOP_MINUTES,
+                minutes.coerceAtLeast(0)
+            )
+        }
         silenceAutoStopMinutes.value = minutes.coerceAtLeast(0)
     }
     fun setStreamQuality(value: LiveStreamQuality) {
-        prefs.edit()
-            .putString("live_stream_quality", value.id)
-            .putInt("live_stream_custom_width", value.width)
-            .putInt("live_stream_custom_height", value.height)
-            .putInt("live_stream_custom_bitrate", value.videoBitrate)
-            .apply()
+        prefs.edit {
+            putString("live_stream_quality", value.id)
+                .putInt("live_stream_custom_width", value.width)
+                .putInt("live_stream_custom_height", value.height)
+                .putInt("live_stream_custom_bitrate", value.videoBitrate)
+        }
         streamQuality.value = value
     }
     fun dismissSavedRecording() { sessionEvents.lastSaved.value = null }
@@ -397,10 +393,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         val context = getApplication<Application>()
-        prefs.edit()
-            .remove(KEY_FORCE_ANDROID_CAPTURE)
-            .remove(KEY_DJMREC_PORT_MODE)
-            .apply()
+        prefs.edit {
+            remove(KEY_FORCE_ANDROID_CAPTURE).remove(KEY_DJMREC_PORT_MODE)
+        }
         context.bindService(
             Intent(context, RecordingService::class.java), connection, Context.BIND_AUTO_CREATE
         )
@@ -420,7 +415,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     ?: UsbAudioManager.AUTO_CHANNEL_OFFSET
                 _multitrackSettings.value = loadMultitrackSettings(device)
                 pushTrackGains()
-                delay(250L)
+                delay(250L.milliseconds)
                 if (_recordingState.value is RecordingState.Idle ||
                     _recordingState.value is RecordingState.Error) {
                     ensureLiveMonitoring()
@@ -435,7 +430,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _recordingState.value is RecordingState.Error) &&
             format in availableFormats) {
             _selectedFormat.value = format
-            prefs.edit().putString("recording_format", format.name).apply()
+            prefs.edit { putString("recording_format", format.name) }
         }
     }
 
@@ -446,12 +441,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _recordingState.value is RecordingState.Preparing) return
         val value = gainDb.coerceIn(0, 12)
         _recordingGainDb.value = value
-        prefs.edit().putInt("recording_gain_db", value).apply()
+        prefs.edit { putInt("recording_gain_db", value) }
         boundService?.setRecordingGainDb(value)
     }
 
     fun setWaveformEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_WAVEFORM_ENABLED, enabled).apply()
+        prefs.edit { putBoolean(KEY_WAVEFORM_ENABLED, enabled) }
         _waveformEnabled.value = enabled
         if (!enabled) _waveformBins.value = emptyWaveform
         boundService?.setWaveformEnabled(enabled)
@@ -486,7 +481,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sanitized = if (offset < 0) UsbAudioManager.AUTO_CHANNEL_OFFSET else offset
         if (sanitized == _usbChannelOffset.value) return
         val device = deviceState.value ?: return
-        prefs.edit().putInt("channel_pair_${device.vendorId}_${device.productId}", sanitized).apply()
+        prefs.edit { putInt("channel_pair_${device.vendorId}_${device.productId}", sanitized) }
         _usbChannelOffset.value = sanitized
 
         // The offset is only read when the native capture session opens (baked into the
@@ -504,7 +499,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _recordingState.value = RecordingState.Preparing
         viewModelScope.launch {
             sendCommand(RecordingService.ACTION_STOP)
-            val stopped = withTimeoutOrNull(5_000L) {
+            val stopped = withTimeoutOrNull(5_000L.milliseconds) {
                 boundService?.state?.first { it is RecordingState.Idle || it is RecordingState.Error }
             }
             if (stopped == null) {
@@ -525,7 +520,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_recordingState.value is RecordingState.Recording ||
             _recordingState.value is RecordingState.Paused ||
             _recordingState.value is RecordingState.Preparing) return
-        prefs.edit().putBoolean(KEY_ADVANCED_MODE, enabled).apply()
+        prefs.edit { putBoolean(KEY_ADVANCED_MODE, enabled) }
         _advancedMode.value = enabled
         multitrackTimeline.clear()
         restartMonitoring("Could not switch advanced mode. Stop capture and reconnect the mixer.")
@@ -554,7 +549,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setTrackArmed(track: Int, armed: Boolean) {
         val device = deviceState.value ?: return
         if (captureSettingsLocked()) return
-        prefs.edit().putString("${trackSettingsKey(device)}_armed_$track", if (armed) "1" else "0").apply()
+        prefs.edit {
+            putString(
+                "${trackSettingsKey(device)}_armed_$track",
+                if (armed) "1" else "0"
+            )
+        }
         _multitrackSettings.value = _multitrackSettings.value.let { it.copy(armed = it.armed + (track to armed)) }
     }
 
@@ -563,7 +563,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val device = deviceState.value ?: return
         if (captureSettingsLocked()) return
         val value = (Math.round(gainDb.coerceIn(-24f, 12f) * 2f) / 2f)
-        if (persist) prefs.edit().putFloat("${trackSettingsKey(device)}_gain_$track", value).apply()
+        if (persist) prefs.edit {putFloat("${trackSettingsKey(device)}_gain_$track", value)}
         _multitrackSettings.value = _multitrackSettings.value.let { it.copy(gainsDb = it.gainsDb + (track to value)) }
         boundService?.setTrackGainDb(track, value)
     }
@@ -579,7 +579,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setTrackSource(track: Int, source: Int) {
         val device = deviceState.value ?: return
         if (captureSettingsLocked()) return
-        prefs.edit().putInt("${trackSettingsKey(device)}_source_$track", source).apply()
+        prefs.edit { putInt("${trackSettingsKey(device)}_source_$track", source) }
         _multitrackSettings.value = _multitrackSettings.value.let {
             it.copy(chosenSources = it.chosenSources + (track to source), routingErrors = it.routingErrors - track)
         }
@@ -637,12 +637,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setForceAndroidCapture(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_FORCE_ANDROID_CAPTURE, enabled).apply()
+        prefs.edit { putBoolean(KEY_FORCE_ANDROID_CAPTURE, enabled) }
         _forceAndroidCapture.value = enabled
     }
 
     fun setDjmrecPortMode(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_DJMREC_PORT_MODE, enabled).apply()
+        prefs.edit { putBoolean(KEY_DJMREC_PORT_MODE, enabled) }
         _djmrecPortMode.value = enabled
     }
 
@@ -712,7 +712,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_MAX_PACKET_SIZE, handle.maxPacketSize)
                 putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, handle.totalChannels)
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, device?.let(::captureChannelOffset) ?: 0)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET,device.let(::captureChannelOffset))
                 putExtra(RecordingService.EXTRA_USB_CLOCK_CONTROL_INTERFACE, handle.clockControlInterfaceNumber)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_SOURCE_ID, handle.clockSourceId)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_FREQUENCY_SETTABLE, handle.clockSupportsFrequencySet)
@@ -766,7 +766,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_MAX_PACKET_SIZE, handle.maxPacketSize)
                 putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, handle.totalChannels)
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, device?.let(::captureChannelOffset) ?: 0)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET,device.let(::captureChannelOffset))
                 putExtra(RecordingService.EXTRA_USB_CLOCK_CONTROL_INTERFACE, handle.clockControlInterfaceNumber)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_SOURCE_ID, handle.clockSourceId)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_FREQUENCY_SETTABLE, handle.clockSupportsFrequencySet)
@@ -858,7 +858,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
                 startMonitoringDevice(context)
-                val readyState = withTimeoutOrNull(15_000L) {
+                val readyState = withTimeoutOrNull(15_000L.milliseconds) {
                     recordingState.first { state ->
                         captureReady(state) || state is RecordingState.Error
                     }

@@ -202,9 +202,6 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 setReTries(MAX_RECONNECT_ATTEMPTS)
                 setCheckServerAlive(true)
             }
-            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("StreamingAudio",
-                "LiveStreamController.prepare: capture=${audioFormat.captureRate}Hz stereo PCM16; " +
-                    "AAC=${audioFormat.encoderRate}Hz/${audioBitrate}bps; FIR resampling=${sampleRate != audioFormat.encoderRate}")
             check(candidate.prepareAudio(sampleRate = audioFormat.encoderRate, isStereo = true,
                 bitrate = audioBitrate)) {
                 "AAC audio preparation failed at ${audioFormat.encoderRate} Hz stereo. Check device encoder support."

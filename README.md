@@ -83,19 +83,9 @@ these inputs and recording them together need additional support; see the
 
 ## Privacy
 
-Optional Firebase diagnostics (crash reports and bounded mixer-connection events) help improve
-mixer compatibility. No recorded audio, filenames or personal data is collected. Turn it off in
-**Settings > Diagnostics & privacy**.
-
-## ☕ Buy me a coffee
-
-If DJM REC saved your set, you can support the project:
-
-<div align="center">
-
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/p2gr)
-
-</div>
+No automatic analytics or crash reports are uploaded. Diagnostic reports are generated locally
+from **Support & diagnostics** and shared only when you choose. YouTube livestreaming uses a
+server address and stream key copied from YouTube Studio.
 
 ## License
 

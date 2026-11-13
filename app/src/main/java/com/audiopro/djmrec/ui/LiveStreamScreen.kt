@@ -1,7 +1,6 @@
 package com.audiopro.djmrec.ui
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,8 +8,6 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
-import android.os.Build
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -85,7 +82,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.streaming.LivePlatform
 import com.audiopro.djmrec.streaming.LiveStreamConfig
@@ -94,28 +90,15 @@ import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
 import com.audiopro.djmrec.streaming.StreamSetupStatus
-import com.audiopro.djmrec.streaming.StreamingSetupRepository
 import com.audiopro.djmrec.streaming.VideoRecordingPolicy
-import com.audiopro.djmrec.streaming.YouTubePrivacy
 import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.DjmRecMotion
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
-import com.google.android.gms.auth.api.identity.AuthorizationClient
-import com.google.android.gms.auth.api.identity.AuthorizationRequest
-import com.google.android.gms.auth.api.identity.Identity
-import com.google.android.gms.common.api.Scope
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.CommonStatusCodes
-import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
-import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -131,7 +114,6 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     var videoMode by rememberSaveable { mutableStateOf(LiveVideoMode.BACK_CAMERA) }
     var step by rememberSaveable { mutableStateOf(0) }
     var confirmEnd by remember { mutableStateOf(false) }
-    var authorizing by remember { mutableStateOf(false) }
     // Stream shape follows how the phone is held when the user goes live. The encoder keeps that
     // orientation for the whole broadcast; on-screen controls rotate with the device.
     val streamPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -144,10 +126,6 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     }
     var localError by remember { mutableStateOf<String?>(null) }
     var pendingCameraConfig by remember { mutableStateOf<LiveStreamConfig?>(null) }
-    var youtubeTitle by rememberSaveable {
-        mutableStateOf("DJ Set ${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}")
-    }
-    var youtubePrivacy by rememberSaveable { mutableStateOf(YouTubePrivacy.UNLISTED) }
     var destinationUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var openedVerificationUrl by remember { mutableStateOf<String?>(null) }
     // A lossless local copy is the only safe copy of a streamed set, so it is on by default.
@@ -162,76 +140,11 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     fun shareBroadcast(url: String) {
         val share = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, youtubeTitle)
+            putExtra(Intent.EXTRA_SUBJECT, "Live DJ set")
             putExtra(Intent.EXTRA_TEXT, "Watch my DJ set live: $url")
         }
         runCatching { context.startActivity(Intent.createChooser(share, "Share broadcast")) }
             .onFailure { localError = "No sharing app is available" }
-    }
-
-    fun acceptYouTubeToken(token: String?) {
-        authorizing = false
-        if (token.isNullOrBlank()) {
-            viewModel.setStreamSetupError(LivePlatform.YOUTUBE, "Google did not return an access token")
-        } else {
-            viewModel.prepareYouTubeDestination(token, youtubeTitle, youtubePrivacy)
-        }
-    }
-
-    val googleAuthorizationClient = remember(context) { Identity.getAuthorizationClient(context) }
-    // Keeps YouTube API calls (viewer stats, broadcast finalization) working on long sets, where
-    // the access token captured at connect time has already expired.
-    LaunchedEffect(Unit) {
-        StreamingSetupRepository.accessTokenRefresher = { silentYouTubeToken(googleAuthorizationClient) }
-    }
-    val googleAuthorization = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        try {
-            acceptYouTubeToken(
-                googleAuthorizationClient.getAuthorizationResultFromIntent(result.data).accessToken
-            )
-        } catch (error: ApiException) {
-            authorizing = false
-            viewModel.setStreamSetupError(
-                LivePlatform.YOUTUBE,
-                googleAuthorizationError(context, error)
-            )
-        }
-    }
-
-    fun connectYouTube() {
-        val activity = context as? Activity
-        if (activity == null) {
-            viewModel.setStreamSetupError(LivePlatform.YOUTUBE, "YouTube authorization is unavailable")
-            return
-        }
-        val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/youtube.force-ssl")))
-            .build()
-        authorizing = true
-        Identity.getAuthorizationClient(activity).authorize(request)
-            .addOnSuccessListener { result ->
-                if (result.hasResolution()) {
-                    val pendingIntent = result.pendingIntent
-                    if (pendingIntent != null) {
-                        googleAuthorization.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
-                    } else {
-                        authorizing = false
-                        viewModel.setStreamSetupError(LivePlatform.YOUTUBE, "Google could not open sign-in. Try again.")
-                    }
-                } else {
-                    acceptYouTubeToken(result.accessToken)
-                }
-            }
-            .addOnFailureListener { error ->
-                authorizing = false
-                viewModel.setStreamSetupError(
-                    LivePlatform.YOUTUBE,
-                    if (error is ApiException) googleAuthorizationError(context, error)
-                    else error.localizedMessage ?: "Google authorization failed"
-                )
-            }
     }
 
     val cameraPermission = rememberLauncherForActivityResult(
@@ -425,7 +338,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             LiveChoiceButton(
                                 label = option.label,
                                 selected = platform == option,
-                                enabled = !setupState.isBusy && !authorizing,
+                                enabled = !setupState.isBusy,
                                 onClick = {
                                     if (platform != option) {
                                         viewModel.abandonYouTubeSetup()
@@ -443,28 +356,18 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         val serverError = localError?.takeIf { keyError == null }
                         when (platform) {
                             LivePlatform.YOUTUBE -> {
-                                if (destinationReady) {
-                                    Text("YouTube destination ready", color = AccentGreen)
-                                    (youtubeBroadcast.watchUrl ?: destinationUrl)?.let { url ->
-                                        TextButton(onClick = { openUrl(url) }) { Text("Open broadcast") }
-                                    }
-                                } else {
-                                    OutlinedTextField(
-                                        value = youtubeTitle,
-                                        onValueChange = { youtubeTitle = it },
-                                        enabled = !setupState.isBusy && !authorizing,
-                                        label = { Text("Broadcast title") },
-                                        supportingText = { Text(if (youtubeTitle.isBlank()) "Required" else "Shown on YouTube to viewers.") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        YouTubePrivacy.entries.forEach { option ->
-                                            FilterChip(youtubePrivacy == option, { youtubePrivacy = option }, enabled = !setupState.isBusy && !authorizing,
-                                                label = { Text(option.label) })
-                                        }
-                                    }
+                                Text("Create a broadcast in YouTube Studio, then copy its server address and stream key here. Start and end the broadcast in YouTube Studio.")
+                                OutlinedButton(onClick = { openUrl("https://studio.youtube.com") }) {
+                                    Text("Open YouTube Studio")
                                 }
+                                OutlinedTextField(serverUrl, { serverUrl = it; localError = null },
+                                    label = { Text("YouTube RTMP / RTMPS server") },
+                                    singleLine = true, isError = serverError != null,
+                                    supportingText = serverError?.let { text -> { Text(text) } },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                    modifier = Modifier.fillMaxWidth())
+                                StreamKeyField(streamKey, { streamKey = it; localError = null },
+                                    "YouTube stream key", keyError != null, keyError)
                             }
                             LivePlatform.MIXCLOUD -> {
                                 Text("Open Mixcloud, sign in, then copy your stream key here. Mixcloud Pro is required.")
@@ -486,9 +389,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 StreamKeyField(streamKey, { streamKey = it; localError = null }, "Stream key", keyError != null, keyError)
                             }
                         }
-                        if (setupState.isBusy || authorizing) {
+                        if (setupState.isBusy) {
                             LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text(if (authorizing) "Connecting to Google..." else setupState.message)
+                            Text(setupState.message)
                         } else if (setupState.status == StreamSetupStatus.ERROR) {
                             Text(setupState.message, color = MaterialTheme.colorScheme.error)
                         }
@@ -619,17 +522,17 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                 Button(onClick = {
                     if (liveState.isActive) confirmEnd = true
                     else when (step) {
-                        0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) connectYouTube() else step = 1
+                        0 -> step = 1
                         1 -> step = 2
                         else -> goLive()
                     }
                 }, enabled = liveState.isActive || when (step) {
-                    0 -> !setupState.isBusy && !authorizing && (destinationReady || platform == LivePlatform.YOUTUBE && youtubeTitle.isNotBlank())
+                    0 -> !setupState.isBusy && destinationReady
                     1 -> destinationReady && pictureReady
                     else -> destinationReady && pictureReady && device != null
                 }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
                     Text(if (liveState.isActive) { if (liveState.localOnly) "Stop video" else "End stream" } else when (step) {
-                        0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) "Connect YouTube" else "Continue"
+                        0 -> "Continue"
                         1 -> if (localOnly) "Review recording" else "Review stream"
                         else -> if (localOnly) "Start video recording" else "Go live on ${platform.label}"
                     })
@@ -813,50 +716,6 @@ private fun decodeArtworkPreview(context: Context, artworkUri: String): Bitmap? 
         decoder.setTargetSampleSize((longestSide / 1_280).coerceAtLeast(1))
     }
 }.getOrNull()
-
-/** Silent token renewal for long sets: returns null when re-consent would need user action. */
-private suspend fun silentYouTubeToken(client: AuthorizationClient): String? =
-    suspendCancellableCoroutine { continuation ->
-        val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/youtube.force-ssl")))
-            .build()
-        client.authorize(request)
-            .addOnSuccessListener { result ->
-                continuation.resume(if (result.hasResolution()) null else result.accessToken)
-            }
-            .addOnFailureListener { continuation.resume(null) }
-    }
-
-private fun googleAuthorizationError(context: Context, error: ApiException): String {
-    val unregistered = error.statusCode == CommonStatusCodes.DEVELOPER_ERROR ||
-        error.message.orEmpty().contains("UNREGISTERED_ON_API_CONSOLE", ignoreCase = true)
-    if (!unregistered) return error.localizedMessage ?: "Google authorization failed"
-
-    val sha1 = appSigningSha1(context).ifBlank { "unknown" }
-    return "Google OAuth client missing. Register Android package ${BuildConfig.APPLICATION_ID} " +
-        "with signing SHA-1 $sha1 against client ${BuildConfig.GOOGLE_OAUTH_CLIENT_ID} in " +
-        "Google Cloud, then enable YouTube Data API v3."
-}
-
-@Suppress("DEPRECATION")
-private fun appSigningSha1(context: Context): String = runCatching {
-    val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        context.packageManager.getPackageInfo(
-            context.packageName,
-            PackageManager.GET_SIGNING_CERTIFICATES
-        )
-    } else {
-        context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
-    }
-    val signature = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
-    } else {
-        packageInfo.signatures?.firstOrNull()
-    } ?: return@runCatching ""
-    MessageDigest.getInstance("SHA-1")
-        .digest(signature.toByteArray())
-        .joinToString(":") { byte -> "%02X".format(byte.toInt() and 0xFF) }
-}.getOrDefault("")
 
 @Composable
 private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {

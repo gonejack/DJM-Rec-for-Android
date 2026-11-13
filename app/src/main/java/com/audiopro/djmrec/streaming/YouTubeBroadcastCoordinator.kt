@@ -13,7 +13,7 @@ class YouTubeBroadcastCoordinator {
     fun updateLiveState(state: LiveStreamState) {
         val previous = liveStreamState.value
         liveStreamState.value = state
-        if (previous.platform == LivePlatform.YOUTUBE && previous.isActive && !state.isActive) {
+        if (youtubeLiveSession != null && previous.platform == LivePlatform.YOUTUBE && previous.isActive && !state.isActive) {
             when (youtubeStreamEndAction(state.status, youtubeTransitionRequested)) {
                 YouTubeStreamEndAction.KEEP_PLANNED -> {
                     stopLifecycleJobs()

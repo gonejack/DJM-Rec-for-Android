@@ -1,13 +1,11 @@
 import java.io.FileInputStream
 import java.util.Properties
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import com.android.build.api.variant.BuildConfigField
+import com.android.build.api.variant.HostTestBuilder
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
 }
 
 // ── Keystore helpers (top-level so they can be used by signingConfigs) ─────
@@ -25,12 +23,6 @@ val streamingFile = rootProject.file("streaming.properties")
 val streaming = if (streamingFile.exists()) loadProperties("streaming.properties") else null
 val twitchClientId = providers.environmentVariable("TWITCH_CLIENT_ID").orNull
     ?: streaming?.getProperty("TWITCH_CLIENT_ID").orEmpty()
-// OAuth client IDs are public identifiers. Google still authenticates Android builds using the
-// package name and signing certificate registered against each ID in Google Cloud.
-val googleLocalClientId =
-    "333115759527-9i5hsmubo1up8d7qvqjbgfm2ur9inkvl.apps.googleusercontent.com"
-val googlePublicClientId =
-    "333115759527-o8poec8lbsa8c98mkpb2k52g7mist9o6.apps.googleusercontent.com"
 
 android {
     namespace = "com.audiopro.djmrec"
@@ -54,9 +46,6 @@ android {
         targetSdk = 34
         versionCode = appVersion.getProperty("VERSION_CODE").toInt()
         versionName = appVersion.getProperty("VERSION_NAME")
-        buildConfigField("String", "TWITCH_CLIENT_ID", "\"${twitchClientId.replace("\"", "\\\"")}\"")
-        buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googlePublicClientId\"")
-        buildConfigField("boolean", "FIREBASE_CONFIGURED", "true")
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
@@ -84,37 +73,16 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = releaseSigning
-            configure<CrashlyticsExtension> {
-                nativeSymbolUploadEnabled = true
-            }
         }
         debug {
             isDebuggable = true
             // So debug and release can be installed side-by-side
             applicationIdSuffix = ".debug"
-            buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleLocalClientId\"")
-            buildConfigField("boolean", "FIREBASE_CONFIGURED", "false")
         }
         create("local") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
-            buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleLocalClientId\"")
-            buildConfigField("boolean", "FIREBASE_CONFIGURED", "false")
-            configure<CrashlyticsExtension> {
-                mappingFileUploadEnabled = false
-                nativeSymbolUploadEnabled = false
-            }
-        }
-    }
-
-    // ── APK output naming ──────────────────────────────────────────────────
-    // Produces versioned APK names from version.properties.
-    applicationVariants.all {
-        val variant = this
-        outputs.all {
-            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "DJM-Rec-for-Android-v${variant.versionName}-${variant.buildType.name}.apk"
         }
     }
 
@@ -135,6 +103,11 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        // Compose Preview reuses the unit-test resource APK for XML resources and themes.
+        unitTests.isIncludeAndroidResources = true
+    }
+
     packaging {
         jniLibs {
             // We statically link Oboe/FLAC into libdjmrec_audio.so, so only
@@ -144,24 +117,29 @@ android {
     }
 }
 
-// Firebase is production-only. Keep debug/local builds isolated from production reports and make
-// ordinary contributor builds work without the gitignored Firebase configuration file.
-tasks.matching { it.name in setOf("processDebugGoogleServices", "processLocalGoogleServices") }
-    .configureEach {
-        enabled = false
+// Configure generated fields and versioned APK names through the public Variant API.
+androidComponents {
+    beforeVariants { variantBuilder ->
+        // Preview tasks are registered for every variant, including local and release.
+        variantBuilder.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
     }
 
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    onVariants { variant ->
+        val buildConfigFields = checkNotNull(variant.buildConfigFields)
+        buildConfigFields.put(
+            "TWITCH_CLIENT_ID",
+            BuildConfigField("String", "\"${twitchClientId.replace("\"", "\\\"")}\"", null)
+        )
+
+        val versionName = appVersion.getProperty("VERSION_NAME")
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("DJM-Rec-for-Android-v$versionName-${variant.name}.apk")
+        }
     }
 }
 
 dependencies {
-    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
-    implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-crashlytics-ndk")
-    testImplementation(kotlin("test"))
+    testImplementation(kotlin("test-junit"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-service:2.8.4")
@@ -177,7 +155,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("com.google.android.gms:play-services-auth:21.6.0")
     implementation("com.github.pedroSG94.RootEncoder:library:2.7.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
