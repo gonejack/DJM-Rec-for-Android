@@ -152,6 +152,118 @@ object RecordingLibrary {
         }
     }
 
+    fun renameFolder(context: Context, path: String, input: String): String {
+        val sourcePath = path.trim('/')
+        require(sourcePath.isNotEmpty()) { "Choose a folder" }
+        val name = input.trim()
+        require(name.isNotEmpty() && name != "." && name != "..") { "Enter a folder name" }
+        require(name.length <= 100 && !name.endsWith('.') && !name.endsWith(' ')) {
+            "Use a folder name of 100 characters or fewer without a trailing dot or space"
+        }
+        require(name.none { it.isISOControl() || it in "/\\\\:*?\\\"<>|" }) { "Name contains unsupported characters" }
+        if (name == sourcePath.substringAfterLast('/')) return sourcePath
+        val parent = sourcePath.substringBeforeLast('/', "")
+        val targetPath = if (parent.isEmpty()) name else "$parent/$name"
+        val members = folderMembers(context, sourcePath)
+        require(members.isNotEmpty()) { "This folder no longer contains recordings" }
+        checkNoPending(context, sourcePath)
+        check(list(context).none { it.relativeDirectory == targetPath || it.relativeDirectory.startsWith("$targetPath/") }) {
+            "A folder with that name already exists"
+        }
+        roots(context).forEach { root ->
+            check(!File(root, targetPath).exists()) { "A folder with that name already exists" }
+        }
+
+        val moved = mutableListOf<() -> Unit>()
+        try {
+            members.forEach { recording ->
+                val suffix = recording.relativeDirectory.removePrefix(sourcePath)
+                val newDirectory = targetPath + suffix
+                val legacyFile = recording.legacyFile
+                if (legacyFile != null) {
+                    val root = roots(context).firstOrNull { legacyFile.toPath().startsWith(it.toPath()) }
+                        ?: error("Recording is outside the library")
+                    val target = File(File(root, newDirectory), legacyFile.name)
+                    check(target.parentFile?.mkdirs() == true || target.parentFile?.isDirectory == true) {
+                        "Could not create the new folder"
+                    }
+                    check(!target.exists() && legacyFile.renameTo(target)) { "Could not move ${legacyFile.name}" }
+                    moved += { check(target.renameTo(legacyFile)) { "Could not restore ${legacyFile.name}" } }
+                } else {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Audio.Media.RELATIVE_PATH, "$RELATIVE_PATH$newDirectory/")
+                    }
+                    check(context.contentResolver.update(recording.uri, values,
+                        "${MediaStore.Audio.Media.IS_PENDING}=0", null) == 1) {
+                        "Could not move ${recording.displayName}"
+                    }
+                    moved += {
+                        context.contentResolver.update(recording.uri, ContentValues().apply {
+                            put(MediaStore.Audio.Media.RELATIVE_PATH, "$RELATIVE_PATH${recording.relativeDirectory}/")
+                        }, null, null)
+                    }
+                }
+            }
+        } catch (failure: Exception) {
+            moved.asReversed().forEach { runCatching { it() } }
+            throw failure
+        }
+        roots(context).forEach { root -> removeEmptyDirectories(File(root, sourcePath)) }
+        return targetPath
+    }
+
+    data class FolderTrashResult(val undoable: List<LibraryRecording>, val permanentlyDeleted: Int)
+
+    fun trashFolder(context: Context, path: String): FolderTrashResult {
+        val members = folderMembers(context, path)
+        require(members.isNotEmpty()) { "This folder no longer contains recordings" }
+        checkNoPending(context, path)
+        val undoable = mutableListOf<LibraryRecording>()
+        var permanentlyDeleted = 0
+        try {
+            // Delete legacy files last so a MediaStore failure can still be rolled back.
+            members.sortedBy { it.legacyFile != null }.forEach { recording ->
+                if (trash(context, recording)) undoable += recording else permanentlyDeleted++
+            }
+        } catch (failure: Exception) {
+            undoable.forEach { untrash(context, it) }
+            throw failure
+        }
+        roots(context).forEach { root -> removeEmptyDirectories(File(root, path)) }
+        return FolderTrashResult(undoable, permanentlyDeleted)
+    }
+
+    private fun folderMembers(context: Context, path: String): List<LibraryRecording> {
+        val normalized = path.trim('/')
+        require(normalized.isNotEmpty()) { "Choose a folder" }
+        return list(context).filter {
+            it.relativeDirectory == normalized || it.relativeDirectory.startsWith("$normalized/")
+        }
+    }
+
+    @Suppress("DEPRECATION") // Required to include pending rows on Android 10.
+    private fun checkNoPending(context: Context, path: String) {
+        val directory = "$RELATIVE_PATH${path.trim('/')}/"
+        val cursor = context.contentResolver.query(
+            MediaStore.setIncludePending(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI),
+            arrayOf(MediaStore.Audio.Media._ID),
+            "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ? AND ${MediaStore.Audio.Media.IS_PENDING}=1",
+            arrayOf("$directory%"), null
+        ) ?: error("Could not check whether this folder is in use")
+        cursor.use {
+            check(!it.moveToFirst()) { "Wait for the recording in this folder to finish" }
+        }
+    }
+
+    private fun roots(context: Context): List<File> = listOfNotNull(
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "DJMRec"),
+        context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)?.let { File(it, "DJMRec") }
+    )
+
+    private fun removeEmptyDirectories(source: File) {
+        if (source.isDirectory) source.walkBottomUp().filter(File::isDirectory).forEach(File::delete)
+    }
+
     fun export(context: Context, recording: LibraryRecording, destination: Uri) {
         check(destination != recording.uri) { "Choose a different destination" }
         context.contentResolver.openInputStream(recording.uri).use { source ->
