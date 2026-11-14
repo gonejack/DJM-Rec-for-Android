@@ -98,7 +98,7 @@ import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
-fun LibraryScreen(viewModel: MainViewModel, onBack: (() -> Unit)? = null) {
+fun LibraryScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var refresh by remember { mutableIntStateOf(0) }
@@ -226,13 +226,14 @@ fun LibraryScreen(viewModel: MainViewModel, onBack: (() -> Unit)? = null) {
         }
         if (visible.isEmpty() && !loading) {
             Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth(), contentAlignment = Alignment.Center
+                Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center
             ) {
                 Text(
-                    if (query.isBlank()) "Your saved recordings will appear here.\nRecordings in progress stay hidden."
-                    else "No matching recordings", color = TextSecondary
+                    text = if (query.isBlank())
+                        "Your saved recordings will appear here.\nRecordings in progress stay hidden."
+                    else
+                        "No matching recordings",
+                    color = TextSecondary
                 )
             }
         } else RecordingTreeList(
@@ -255,7 +256,6 @@ fun LibraryScreen(viewModel: MainViewModel, onBack: (() -> Unit)? = null) {
                     FolderAction.RENAME -> {
                         folderToRename = path; folderName = path.substringAfterLast('/')
                     }
-
                     FolderAction.DELETE -> folderToDelete = path
                 }
             },
@@ -571,10 +571,7 @@ private fun LazyListScope.recordingTreeRows(
                     RecordingFolderRow(node, expanded, depth, busy, onToggleFolder, onFolderAction)
                 }
                 if (expanded) {
-                    recordingTreeRows(
-                        node.children, isFolderExpanded, onToggleFolder, busy,
-                        onFolderAction, onAction, depth + 1
-                    )
+                    recordingTreeRows(node.children, isFolderExpanded, onToggleFolder, busy, onFolderAction, onAction, depth + 1)
                 }
             }
         }
