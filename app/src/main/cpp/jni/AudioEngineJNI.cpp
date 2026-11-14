@@ -374,6 +374,12 @@ Java_com_audiopro_djmrec_audio_AudioEngine_setLimiterEnabled(
     UsbAudioEngine::instance().setLimiterEnabled(enabled == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setSyncInputsToTrack1(
+    JNIEnv* /*env*/, jobject /*thiz*/, jboolean enabled) {
+    UsbAudioEngine::instance().setSyncInputsToTrack1(enabled == JNI_TRUE);
+}
+
 JNIEXPORT jfloat JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_takeLimiterReductionDb(JNIEnv* /*env*/, jobject /*thiz*/) {
     return UsbAudioEngine::instance().takeLimiterReductionDb();

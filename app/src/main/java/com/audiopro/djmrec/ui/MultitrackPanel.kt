@@ -36,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -524,7 +525,7 @@ private fun MixTrackRow(
             }
             GainChip(formatGain(gainDb), "Mix gain ${formatGain(gainDb)}", enabled, onOpenSetup)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MixSourceSelector("L", route.leftChannel, tracks, sourcesEnabled, { onSource(true, it) }, Modifier.weight(1f))
             MixSourceSelector("R", route.rightChannel, tracks, sourcesEnabled, { onSource(false, it) }, Modifier.weight(1f))
         }
@@ -562,33 +563,51 @@ private fun MixSourceSelector(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box(modifier) {
-        Surface(onClick = { expanded = true }, enabled = enabled, shape = RoundedCornerShape(8.dp),
+    val selectorShape = RoundedCornerShape(8.dp)
+    val selectorTextStyle = MaterialTheme.typography.labelMedium
+    val selectorContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val menuItemColors = MenuDefaults.itemColors(
+        textColor = selectorContentColor,
+        leadingIconColor = selectorContentColor
+    )
+    BoxWithConstraints(modifier) {
+        val buttonWidth = maxWidth
+        Surface(
+            onClick = { expanded = true },
+            enabled = enabled,
+            shape = selectorShape,
             color = SurfaceVariantDark,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
-                contentDescription = "Mix $side source: ${StereoMixRoute.sourceLabel(channel)}"
-            }) {
-            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("$side ← ${StereoMixRoute.sourceLabel(channel)}", maxLines = 1,
-                    style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
+            contentColor = selectorContentColor,
+            modifier = Modifier.fillMaxWidth().height(32.dp).semantics {contentDescription = "Mix $side source: ${StereoMixRoute.sourceLabel(channel)}"}) {
+                Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("$side ← ${StereoMixRoute.sourceLabel(channel)}", maxLines = 1, style = selectorTextStyle, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
+                }
             }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            modifier = Modifier.width(buttonWidth),
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = selectorShape,
+            containerColor = SurfaceVariantDark,
+            tonalElevation = 0.dp,
+        ) {
             DropdownMenuItem(
-                text = { Text("None") },
-                leadingIcon = { if (channel == StereoMixRoute.NONE) Icon(Icons.Default.Check, "Selected") else Spacer(Modifier.size(24.dp)) },
-                onClick = { expanded = false; onSelect(StereoMixRoute.NONE) }
+                text = { Text("None", style = selectorTextStyle) },
+                leadingIcon = { if (channel == StereoMixRoute.NONE) Icon(Icons.Default.Check, "Selected", Modifier.size(18.dp)) else Spacer(Modifier.size(18.dp)) },
+                colors = menuItemColors,
+                onClick = { expanded = false; onSelect(StereoMixRoute.NONE) },
             )
             tracks.forEach { track ->
                 repeat(track.channels.width) { offset ->
                     val source = track.channels.firstChannel + offset
                     DropdownMenuItem(
                         text = { Column {
-                            Text(StereoMixRoute.sourceLabel(source))
+                            Text(StereoMixRoute.sourceLabel(source), style = selectorTextStyle)
                             Text(track.subtitle, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                         } },
-                        leadingIcon = { if (source == channel) Icon(Icons.Default.Check, "Selected") else Spacer(Modifier.size(24.dp)) },
+                        leadingIcon = { if (source == channel) Icon(Icons.Default.Check, "Selected", Modifier.size(18.dp)) else Spacer(Modifier.size(18.dp)) },
+                        colors = menuItemColors,
                         onClick = { expanded = false; onSelect(source) }
                     )
                 }

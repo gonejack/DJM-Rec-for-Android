@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.BuildConfig
+import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.ui.theme.TextSecondary
 import androidx.core.net.toUri
 
@@ -28,6 +29,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val trimSilence by viewModel.trimLeadingSilence.collectAsState()
     val limiter by viewModel.safetyLimiter.collectAsState()
     val preRecord by viewModel.preRecord.collectAsState()
+    val syncInputs by viewModel.syncInputsToTrack1.collectAsState()
+    val recordingState by viewModel.recordingState.collectAsState()
+    val liveState by viewModel.liveStreamState.collectAsState()
+    val saving by viewModel.saving.collectAsState()
+    val canChangeClockSync = !saving && !liveState.isActive &&
+        recordingState !is RecordingState.Recording && recordingState !is RecordingState.Paused &&
+        recordingState !is RecordingState.Preparing
     val autoStopMinutes by viewModel.silenceAutoStopMinutes.collectAsState()
     val context = LocalContext.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -36,6 +44,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Text("Monitoring arms automatically after USB connection and permission. Recording starts only when you press Record.", color = TextSecondary)
         PreferenceSwitch("Safety limiter", "Catches loud peaks at -1 dBFS instead of clipping them, so a hot mix or +12 dB gain stays clean in the recording and the livestream.", limiter, viewModel::setSafetyLimiter)
         PreferenceSwitch("Pre-record buffer", "Keeps the last 15 seconds while the mixer is connected, so pressing Record late still captures the start of the mix.", preRecord, viewModel::setPreRecord)
+        PreferenceSwitch(
+            "Sync inputs to Track 1",
+            "Keeps Track 2, Track 3 and other independent USB inputs on Track 1's clock to prevent drift in the Mix and track recordings. Adds 40 ms of buffering to all inputs. Monitoring restarts when changed; stop recording and livestreaming to change this.",
+            syncInputs, viewModel::setSyncInputsToTrack1, enabled = canChangeClockSync
+        )
         SilenceAutoStopPreference(autoStopMinutes, viewModel::setSilenceAutoStopMinutes)
         PreferenceSwitch("Trim leading silence", "Start the file at the first sound, keeping half a second of lead-in. Removes the few silent seconds before the mixer's audio arrives. Applies to the next recording.", trimSilence, viewModel::setTrimLeadingSilence)
         PreferenceSwitch("Confirm stop", "Ask before stopping from the recorder. Notification Save & close always acts immediately.", confirm, viewModel::setConfirmStop)
@@ -87,15 +100,15 @@ private fun SilenceAutoStopPreference(minutes: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun PreferenceSwitch(title: String, detail: String, value: Boolean, onChange: (Boolean) -> Unit) {
+private fun PreferenceSwitch(title: String, detail: String, value: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
-        Row(Modifier.fillMaxWidth().toggleable(value = value, role = Role.Switch, onValueChange = onChange).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+        Row(Modifier.fillMaxWidth().toggleable(value = value, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
-            Switch(value, null)
+            Switch(value, null, enabled = enabled)
         }
     }
 }

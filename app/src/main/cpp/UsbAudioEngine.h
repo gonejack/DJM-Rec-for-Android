@@ -10,6 +10,7 @@
 
 #include <oboe/Oboe.h>
 
+#include "ClockedStereoBuffer.h"
 #include "LeadingSilenceGate.h"
 #include "PreRecordHistory.h"
 #include "RingBuffer.h"
@@ -84,6 +85,8 @@ public:
     void setTrackGainDb(int track, float gainDb);
     /** Flat track-bus channel indices for Mix L/R; -1 mutes a side (None). */
     void setMixSources(int leftChannel, int rightChannel);
+    /** Next USB open: resample independent inputs to Track 1's clock (default off). */
+    void setSyncInputsToTrack1(bool enabled);
     /** Identical non-None sources encode as mono; all other routes encode as stereo. */
     int getMixOutputChannelCount() const;
     void setTrackWaveformsEnabled(bool enabled);
@@ -182,7 +185,7 @@ private:
     void onUsbIsoFrames(const int32_t* interleavedStereo, const int32_t* allChannels,
                         int wireChannels, size_t frameCount);
     void pushSecondaryFrames(size_t input, const int32_t* stereo, size_t frameCount);
-    void readSecondaryFrames(int32_t* interleaved, size_t frameCount);
+    bool readInputFrames(const int32_t* primary, int32_t* interleaved, size_t frameCount);
     /** Encoder thread, writer lock held: writes each armed track from combined ring frames. */
     void writeTrackFrames(const int32_t* combined, size_t frameCount, std::vector<int32_t>& scratch);
     std::unique_ptr<AudioWriter> makeTrackWriter(int track, int fd, ContainerFormat format);
@@ -191,16 +194,12 @@ private:
     std::shared_ptr<oboe::AudioStream> mStream;
     std::unique_ptr<UsbIsoAudioSource> mUsbIsoSource;
     std::vector<std::unique_ptr<UsbIsoAudioSource>> mSecondarySources;
-    struct SecondaryQueue {
-        std::vector<int32_t> samples;
-        size_t read = 0;
-        size_t write = 0;
-        size_t available = 0;
-        uint64_t droppedFrames = 0;
-        uint64_t missingFrames = 0;
-    };
     std::mutex mSecondaryMutex;
-    std::vector<SecondaryQueue> mSecondaryQueues;
+    std::vector<ClockedStereoBuffer> mSecondaryQueues;
+    ClockedStereoBuffer mPrimaryDelay;
+    std::atomic<bool> mSyncInputsToTrack1{false};
+    bool mSyncInputsToTrack1Active = false; // fixed before any capture callback starts
+    bool mInputsReady = false; // mSecondaryMutex; only publish after every source is verified
     std::string mLastUsbSetupFailure; // retained after failed source teardown; guarded by mControlMutex
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;

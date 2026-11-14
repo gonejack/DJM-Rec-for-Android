@@ -122,6 +122,8 @@ class RecordingService : LifecycleService() {
         const val PREF_SAFETY_LIMITER = "safety_limiter"
         /** Keep the last 15 s while monitoring and add them to the next recording (default on). */
         const val PREF_PRE_RECORD = "pre_record"
+        /** Adapt independent USB input clocks to Track 1 on the next capture open (default off). */
+        const val PREF_SYNC_INPUTS_TO_TRACK1 = "sync_inputs_to_track1"
         /** Also write a 320 kbps MP3 copy next to a WAV or FLAC set (default off). */
         const val PREF_MP3_COPY = "mp3_copy"
         /** Stop a recording after this many minutes of silence; 0 disables (default 10). */
@@ -578,11 +580,12 @@ class RecordingService : LifecycleService() {
         AudioEngine.setRecordingGainDb(AudioGain.snap(gainDb))
     }
 
-    /** Pushes the limiter and pre-record settings to the native engine; safe at any time. */
+    /** Applies capture preferences; input clock sync is latched on the next USB open. */
     fun applyCapturePreferences() {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         AudioEngine.setLimiterEnabled(prefs.getBoolean(PREF_SAFETY_LIMITER, true))
         AudioEngine.setPreRecordEnabled(prefs.getBoolean(PREF_PRE_RECORD, true))
+        AudioEngine.setSyncInputsToTrack1(prefs.getBoolean(PREF_SYNC_INPUTS_TO_TRACK1, false))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

@@ -75,10 +75,7 @@ data class UsbAudioDeviceInfo(
 
     val captureLabel: String
         get() = if (requiresExplicitInterfaceSelection) {
-            val names = selectedInterfaceNumbers.mapNotNull { number ->
-                captureInputs.firstOrNull { it.interfaceNumber == number }?.name
-            }
-            "$productName · ${names.joinToString(" + ")}"
+            "$productName · ${selectedInterfaceNumbers.size}/${captureInputs.size}"
         } else productName
 
     /** Android's device id cannot identify an interface within a multi-input USB device. */

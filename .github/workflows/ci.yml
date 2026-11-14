@@ -26,5 +26,9 @@ jobs:
         run: chmod +x gradlew
       - name: Install native toolchain
         run: sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1"
+      - name: Check input clock synchronization
+        run: |
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iapp/src/main/cpp app/src/test/cpp/ClockedStereoBufferTest.cpp -o /tmp/djmrec-clock-sync-test
+          /tmp/djmrec-clock-sync-test
       - name: Lint, test, and build
         run: ./gradlew lintDebug testDebugUnitTest assembleDebug --console=plain

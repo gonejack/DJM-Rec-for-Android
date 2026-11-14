@@ -83,6 +83,9 @@ object AudioEngine {
     /** Selects processed track channels for the stereo Mix, including video and live AAC audio. */
     external fun setMixSources(leftChannel: Int, rightChannel: Int)
 
+    /** Next USB open: adapt independent input clocks to Track 1 with equal buffering on all tracks. */
+    external fun setSyncInputsToTrack1(enabled: Boolean)
+
     /**
      * Begins pulling from the ring buffer into the selected encoder and writing to [outputPath].
      * [format] is [RecordingFormat.nativeValue].

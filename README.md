@@ -57,9 +57,14 @@ track next to the master, for example each deck post-fader, ready to mix again i
   device.
 - Needs an input with more than 2 channels. A stereo-only input has nothing extra to record.
 
-**Cubilux CB5:** MIC1, MIC2 and Line In use three separate stereo USB interfaces. Selecting
-these inputs and recording them together need additional support; see the
-[development handoff and captured USB descriptors](docs/cubilux-cb5-development.md).
+**Cubilux CB5:** MIC1, MIC2 and Line In use separate stereo USB interfaces. In Settings →
+Capture, enable **Sync inputs to Track 1** when recording multiple inputs to compensate for
+clock drift. Track 1 stays sample-exact; the other inputs are adaptively resampled before the
+Mix and individual track recordings. All inputs gain about 40 ms of buffering. The option is
+off by default and can be changed while idle or monitoring; changing it restarts monitoring.
+Stop recording and livestreaming before changing it. Inputs within one multichannel USB
+stream already share a clock and do not need this correction. See the
+[hardware notes and captured USB descriptors](docs/cubilux-cb5-development.md) for device details.
 
 ## Features
 

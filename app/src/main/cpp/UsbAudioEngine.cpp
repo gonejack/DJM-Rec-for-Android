@@ -204,8 +204,12 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
         : isoConfig.emitAllChannels && isoConfig.totalChannels <= TrackBus::kMaxChannels
             ? isoConfig.totalChannels : 0;
     mMixRoute.store(independentInputs ? packMixRoute(0, 1) : UINT32_MAX, std::memory_order_relaxed);
+    mSyncInputsToTrack1Active = !secondaryConfigs.empty() &&
+        mSyncInputsToTrack1.load(std::memory_order_acquire);
+    mInputsReady = false;
     mSecondaryQueues.resize(secondaryConfigs.size());
-    for (auto& queue : mSecondaryQueues) queue.samples.resize(4800 * 2);
+    for (auto& queue : mSecondaryQueues) queue.reset(sampleRateHint);
+    if (mSyncInputsToTrack1Active) mPrimaryDelay.reset(sampleRateHint);
     UsbIsoAudioSource::Config sourceConfig = isoConfig;
     sourceConfig.emitAllChannels = secondaryConfigs.empty() && mTrackChannels > 0;
     sourceConfig.disableRouteFallback = isoConfig.disableRouteFallback || mTrackChannels > 0;
@@ -218,11 +222,7 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
             } else {
                 static thread_local std::vector<int32_t> tracks;
                 tracks.resize(count * mTrackChannels);
-                readSecondaryFrames(tracks.data(), count);
-                for (size_t frame = 0; frame < count; ++frame) {
-                    tracks[frame * mTrackChannels] = stereo[frame * 2];
-                    tracks[frame * mTrackChannels + 1] = stereo[frame * 2 + 1];
-                }
+                if (!readInputFrames(stereo, tracks.data(), count)) return;
                 onUsbIsoFrames(stereo, tracks.data(), mTrackChannels, count);
             }
         });
@@ -293,6 +293,14 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     mLiveRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * 2 * sizeof(int32_t));
     mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>(mFormat.sampleRate);
     configureCaptureProcessing();
+    {
+        std::lock_guard<std::mutex> queueLock(mSecondaryMutex);
+        // The inputs open sequentially. Discard their probe audio together so an early input
+        // cannot start a session seconds ahead of the last one.
+        for (auto& queue : mSecondaryQueues) queue.reset(measuredSampleRate);
+        if (mSyncInputsToTrack1Active) mPrimaryDelay.reset(measuredSampleRate);
+        mInputsReady = true;
+    }
 
     mStreamOpen.store(true, std::memory_order_release);
     LOGI("USB iso capture open: %d Hz, 2ch extracted from a %dch wire "
@@ -313,41 +321,38 @@ void UsbAudioEngine::setMixSources(int leftChannel, int rightChannel) {
     }
 }
 
-void UsbAudioEngine::pushSecondaryFrames(size_t input, const int32_t* stereo, size_t frameCount) {
-    std::lock_guard<std::mutex> lock(mSecondaryMutex);
-    auto& queue = mSecondaryQueues[input];
-    const size_t capacity = queue.samples.size();
-    for (size_t frame = 0; frame < frameCount; ++frame) {
-        if (queue.available == capacity) {
-            queue.read = (queue.read + 2) % capacity;
-            queue.available -= 2;
-            ++queue.droppedFrames;
-        }
-        queue.samples[queue.write] = stereo[frame * 2];
-        queue.samples[(queue.write + 1) % capacity] = stereo[frame * 2 + 1];
-        queue.write = (queue.write + 2) % capacity;
-        queue.available += 2;
-    }
+void UsbAudioEngine::setSyncInputsToTrack1(bool enabled) {
+    mSyncInputsToTrack1.store(enabled, std::memory_order_release);
 }
 
-void UsbAudioEngine::readSecondaryFrames(int32_t* interleaved, size_t frameCount) {
-    const auto channels = static_cast<size_t>(mTrackChannels);
-    std::fill(interleaved, interleaved + frameCount * channels, 0);
+void UsbAudioEngine::pushSecondaryFrames(size_t input, const int32_t* stereo, size_t frameCount) {
     std::lock_guard<std::mutex> lock(mSecondaryMutex);
-    for (size_t input = 0; input < mSecondaryQueues.size(); ++input) {
-        auto& queue = mSecondaryQueues[input];
+    if (mInputsReady) mSecondaryQueues[input].push(stereo, frameCount);
+}
+
+bool UsbAudioEngine::readInputFrames(const int32_t* primary, int32_t* interleaved, size_t frameCount) {
+    const auto channels = static_cast<size_t>(mTrackChannels);
+    std::lock_guard<std::mutex> lock(mSecondaryMutex);
+    if (!mInputsReady) return false;
+    if (mSyncInputsToTrack1Active) {
+        // Track 1 remains sample-exact; give it the same latency as the other inputs' jitter
+        // buffers. Every output block is still driven exclusively by Track 1's frame count.
+        mPrimaryDelay.push(primary, frameCount);
+        if (mPrimaryDelay.bufferedFrames() < mPrimaryDelay.targetFrames() + frameCount) return false;
+        mPrimaryDelay.readDirect(interleaved, frameCount, channels);
+    } else {
         for (size_t frame = 0; frame < frameCount; ++frame) {
-            if (queue.available < 2) {
-                ++queue.missingFrames;
-                continue;
-            }
-            int32_t* output = interleaved + frame * channels + (input + 1) * 2;
-            output[0] = queue.samples[queue.read];
-            output[1] = queue.samples[(queue.read + 1) % queue.samples.size()];
-            queue.read = (queue.read + 2) % queue.samples.size();
-            queue.available -= 2;
+            interleaved[frame * channels] = primary[frame * 2];
+            interleaved[frame * channels + 1] = primary[frame * 2 + 1];
         }
     }
+    for (size_t input = 0; input < mSecondaryQueues.size(); ++input) {
+        auto& queue = mSecondaryQueues[input];
+        int32_t* output = interleaved + (input + 1) * 2;
+        if (mSyncInputsToTrack1Active) queue.readSynced(output, frameCount, channels);
+        else queue.readDirect(output, frameCount, channels);
+    }
+    return true;
 }
 
 void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, const int32_t* allChannels,
@@ -1133,6 +1138,8 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
         << "trimmed_leading_ms=" << mTrimmedLeadingMillis.load(std::memory_order_relaxed) << '\n'
         << "limiter_enabled=" << (mLimiterEnabled.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
         << "pre_record_enabled=" << (mPreRecordEnabled.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "sync_inputs_to_track1=" << (mSyncInputsToTrack1.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "input_clock_sync_active=" << (mSyncInputsToTrack1Active && !mSecondarySources.empty() ? "true" : "false") << '\n'
         << "pre_recorded_ms=" << mPreRecordedMillis.load(std::memory_order_relaxed) << '\n'
         << "trailing_silence_ms=" << getTrailingSilenceMillis() << '\n'
         << "companion_error_code=" << mCompanionErrorCode.load(std::memory_order_relaxed) << '\n'
@@ -1156,8 +1163,10 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
         std::lock_guard<std::mutex> queueLock(mSecondaryMutex);
         for (size_t i = 0; i < mSecondaryQueues.size(); ++i) {
             out << "\nsecondary_queue_" << i + 1 << "_dropped_frames="
-                << mSecondaryQueues[i].droppedFrames
-                << " missing_frames=" << mSecondaryQueues[i].missingFrames;
+                << mSecondaryQueues[i].droppedFrames()
+                << " missing_frames=" << mSecondaryQueues[i].missingFrames()
+                << " buffered_frames=" << mSecondaryQueues[i].bufferedFrames()
+                << " clock_correction_ppm=" << mSecondaryQueues[i].correctionPpm();
         }
     } else if (!mLastUsbSetupFailure.empty()) {
         out << "\n--- failed_usb_setup ---\n" << mLastUsbSetupFailure;

@@ -145,6 +145,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val trimLeadingSilence = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, true))
     val safetyLimiter = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_SAFETY_LIMITER, true))
     val preRecord = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_PRE_RECORD, true))
+    val syncInputsToTrack1 = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_SYNC_INPUTS_TO_TRACK1, false))
     val mp3Copy = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_MP3_COPY, false))
     val silenceAutoStopMinutes = MutableStateFlow(
         prefs.getInt(RecordingService.PREF_SILENCE_AUTO_STOP_MINUTES, RecordingService.DEFAULT_SILENCE_AUTO_STOP_MINUTES)
@@ -193,6 +194,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit { putBoolean(RecordingService.PREF_PRE_RECORD, value) }
         preRecord.value = value
         boundService?.applyCapturePreferences()
+    }
+    fun setSyncInputsToTrack1(value: Boolean) {
+        if (captureSettingsLocked() || liveStreamState.value.isActive || value == syncInputsToTrack1.value) return
+        prefs.edit { putBoolean(RecordingService.PREF_SYNC_INPUTS_TO_TRACK1, value) }
+        syncInputsToTrack1.value = value
+        boundService?.applyCapturePreferences()
+        if (deviceState.value?.selectedInterfaceNumbers.orEmpty().size > 1) {
+            multitrackTimeline.clear()
+            restartMonitoring("Could not change input clock sync. Stop capture and reconnect the mixer.")
+        }
     }
     fun setMp3Copy(value: Boolean) {
         prefs.edit { putBoolean(RecordingService.PREF_MP3_COPY, value) }
