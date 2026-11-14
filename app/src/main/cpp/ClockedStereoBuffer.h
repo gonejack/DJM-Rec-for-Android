@@ -97,7 +97,7 @@ public:
                 return;
             }
             const double phase = mFraction * kPhases;
-            const size_t index = static_cast<size_t>(phase);
+            const auto index = static_cast<size_t>(phase);
             const double blend = phase - static_cast<double>(index);
             double left = 0.0, right = 0.0;
             for (int tap = 0; tap < kTaps; ++tap) {
@@ -109,17 +109,17 @@ public:
             output[frame * stride] = pcm(left);
             output[frame * stride + 1] = pcm(right);
             mFraction += mRatio;
-            const size_t consumed = static_cast<size_t>(mFraction);
+            const auto consumed = static_cast<size_t>(mFraction);
             mFraction -= static_cast<double>(consumed);
             for (size_t i = 0; i < consumed; ++i) advance();
         }
     }
 
-    size_t bufferedFrames() const { return mAvailable; }
-    size_t targetFrames() const { return mTargetFrames; }
-    uint64_t droppedFrames() const { return mDroppedFrames; }
-    uint64_t missingFrames() const { return mMissingFrames; }
-    double correctionPpm() const { return (mRatio - 1.0) * 1'000'000.0; }
+    [[nodiscard]] size_t bufferedFrames() const { return mAvailable; }
+    [[nodiscard]] size_t targetFrames() const { return mTargetFrames; }
+    [[nodiscard]] uint64_t droppedFrames() const { return mDroppedFrames; }
+    [[nodiscard]] uint64_t missingFrames() const { return mMissingFrames; }
+    [[nodiscard]] double correctionPpm() const { return (mRatio - 1.0) * 1'000'000.0; }
 
 private:
     static constexpr int kHalfTaps = 16;
@@ -153,7 +153,7 @@ private:
         return table;
     }
 
-    int32_t sample(int offset, int channel) const {
+    [[nodiscard]] int32_t sample(int offset, int channel) const {
         const size_t index = (mRead + mCapacity + offset) % mCapacity;
         return mSamples[index * 2 + channel];
     }

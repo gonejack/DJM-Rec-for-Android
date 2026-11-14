@@ -51,8 +51,8 @@ object RecordingOutputManager {
     ): PendingRecordingOutput? = createNamed(context, displayName(sessionId, format, partIndex), format, partIndex)
 
     /**
-     * One multitrack track file, in a folder next to the set (`Music/DJMRec/<set>_tracks/`) so
-     * the Sets list keeps showing one entry per set. [trackNumber] is 1-based, as shown in the UI.
+     * One multitrack track file in `Music/DJMRec/tracks_<session>/`, alongside the mix.
+     * [trackNumber] is 1-based, as shown in the UI.
      */
     fun createTrack(
         context: Context,
@@ -247,8 +247,8 @@ object RecordingOutputManager {
         return "mix_${sessionId}$suffix.${format.extension}"
     }
 
-    /** `Music/DJMRec/mix_<session>_tracks`: matches the set's own file name. */
-    internal fun trackFolder(sessionId: String): String = "$RELATIVE_PATH/mix_${sessionId}_tracks"
+    /** Tracks from one session share `Music/DJMRec/tracks_<session>`. */
+    internal fun trackFolder(sessionId: String): String = "$RELATIVE_PATH/tracks_$sessionId"
 
     /** e.g. "02 CH1 Post-fader.wav"; WAV rollover parts get the set's `_partNN` suffix. */
     internal fun trackDisplayName(trackNumber: Int, label: String, format: RecordingFormat, partIndex: Int): String {

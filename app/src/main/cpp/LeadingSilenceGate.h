@@ -46,7 +46,7 @@ public:
         mPreRoll.assign(mPreRollCapacity * mChannelCount, 0);
     }
 
-    bool awaiting() const { return mAwaiting; }
+    [[nodiscard]] bool awaiting() const { return mAwaiting; }
 
     static bool isAudible(int32_t sample) { return sample >= kThreshold || sample <= -kThreshold; }
 
@@ -70,7 +70,7 @@ public:
     }
 
     /** Frames dropped before the gate opened; excludes the pre-roll that was kept. */
-    uint64_t discardedFrames() const { return mDiscardedFrames; }
+    [[nodiscard]] uint64_t discardedFrames() const { return mDiscardedFrames; }
 
     template <typename Emit>
     bool process(const int32_t* interleaved, size_t frameCount, Emit&& emit) {

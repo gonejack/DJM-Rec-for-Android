@@ -74,7 +74,7 @@ class CubiluxCaptureInputTest {
         assertTrue(info.requiresIsoCapture)
         assertFalse(info.useAndroidCapture(true))
         assertFalse(info.useAndroidCapture(false))
-        assertEquals("CB5 1/3", info.captureLabel)
+        assertEquals("CB5 · 1/3", info.captureLabel)
         // A single stereo stream retains the ordinary Android routing policy.
         assertFalse(info.copy(captureInputs = inputs.take(1)).requiresIsoCapture)
         val multichannel = info.copy(captureInputs = emptyList(), channelCount = 8)
@@ -97,7 +97,7 @@ class CubiluxCaptureInputTest {
     @Test
     fun selectedPortsAreAllMarkedWithACompactDeviceLabel() {
         val selected = device(1).copy(selectedInterfaceNumbers = listOf(1, 2, 3))
-        assertEquals("CB5 3/3", selected.captureLabel)
+        assertEquals("CB5 · 3/3", selected.captureLabel)
         assertTrue(UsbInputOption(selected.deviceName, "MIC1", true, true, 1).matches(selected))
         assertTrue(UsbInputOption(selected.deviceName, "Line In", true, true, 2).matches(selected))
         assertTrue(UsbInputOption(selected.deviceName, "MIC2", true, true, 3).matches(selected))

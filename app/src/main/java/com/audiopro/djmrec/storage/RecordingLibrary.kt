@@ -1,16 +1,27 @@
 package com.audiopro.djmrec.storage
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
 import android.os.Environment
 import android.media.MediaMetadataRetriever
 import androidx.core.content.FileProvider
 import java.io.File
 
-data class LibraryRecording(val uri: Uri, val displayName: String, val size: Long, val duration: Long, val modified: Long, val legacyFile: File? = null) {
+data class LibraryRecording(
+    val uri: Uri,
+    val displayName: String,
+    val size: Long,
+    val duration: Long,
+    val modified: Long,
+    val legacyFile: File? = null,
+    val relativeDirectory: String = ""
+) {
     val extension get() = displayName.substringAfterLast('.').lowercase()
     val title get() = displayName.substringBeforeLast('.')
     val mimeType get() = when (extension) {
@@ -22,31 +33,52 @@ data class LibraryRecording(val uri: Uri, val displayName: String, val size: Lon
 
 /** Uses published MediaStore rows; never lists, renames or deletes an active capture. */
 object RecordingLibrary {
+    private const val RELATIVE_PATH = "Music/DJMRec/"
+    private val extensions = setOf("wav", "flac", "mp3")
+
+    @Suppress("DEPRECATION") // setIncludePending also supports Android 10.
     fun list(context: Context): List<LibraryRecording> {
-        val columns = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME,
-            MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.IS_PENDING)
-        val indexedNames = mutableSetOf<String>()
+        val supportsTrash = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        val columns = buildList {
+            addAll(listOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME,
+                MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DURATION,
+                MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.IS_PENDING,
+                MediaStore.Audio.Media.RELATIVE_PATH))
+            if (supportsTrash) add(MediaStore.MediaColumns.IS_TRASHED)
+        }.toTypedArray()
+        val collection = if (supportsTrash) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.setIncludePending(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI)
+        val queryArgs = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?")
+            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf("$RELATIVE_PATH%"))
+            putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.Audio.Media.DATE_MODIFIED} DESC")
+            if (supportsTrash) {
+                putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+            }
+        }
+        val indexedPaths = mutableSetOf<String>()
         return buildList {
-            context.contentResolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, columns,
-                "${MediaStore.Audio.Media.RELATIVE_PATH}=?",
-                arrayOf("Music/DJMRec/"), "${MediaStore.Audio.Media.DATE_MODIFIED} DESC")?.use { cursor ->
+            context.contentResolver.query(collection, columns, queryArgs, null)?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val name = cursor.getString(1)
-                    indexedNames += name
-                    if (cursor.getInt(5) != 0) continue
-                    if (name.substringAfterLast('.').lowercase() !in listOf("wav", "flac", "mp3")) continue
+                    val path = cursor.getString(6)
+                    indexedPaths += path + name
+                    if (cursor.getInt(5) != 0 || (supportsTrash && cursor.getInt(7) != 0)) continue
+                    if (name.substringAfterLast('.').lowercase() !in extensions) continue
                     add(LibraryRecording(ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                        cursor.getLong(0)), name, cursor.getLong(2), cursor.getLong(3), cursor.getLong(4) * 1000))
+                        cursor.getLong(0)), name, cursor.getLong(2), cursor.getLong(3), cursor.getLong(4) * 1000,
+                        relativeDirectory = path.removePrefix(RELATIVE_PATH).trim('/')))
                 }
             }
-            // Older versions wrote direct files. Keep them accessible without moving or
-            // deleting originals; exclude indexed rows, including every pending capture.
+            // Older versions wrote direct files. Compare full paths because different
+            // sessions can contain identically named tracks. Hidden captures/trash stay hidden.
             val publicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "DJMRec")
             val privateDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)?.let { File(it, "DJMRec") }
             listOfNotNull(publicDir, privateDir).forEach { dir ->
-                dir.listFiles().orEmpty().filter { file ->
-                    file.isFile && file.extension.lowercase() in listOf("wav", "flac", "mp3") &&
-                        (dir != publicDir || file.name !in indexedNames)
+                dir.walkTopDown().onEnter { it == dir || !it.isHidden }.filter { file ->
+                    file.isFile && !file.isHidden && file.extension.lowercase() in extensions &&
+                        (dir != publicDir || RELATIVE_PATH + file.relativeTo(dir).invariantSeparatorsPath !in indexedPaths)
                 }.forEach { file ->
                     val duration = runCatching {
                         val metadata = MediaMetadataRetriever()
@@ -56,7 +88,8 @@ object RecordingLibrary {
                         } finally { metadata.release() }
                     }.getOrDefault(0L)
                     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    add(LibraryRecording(uri, file.name, file.length(), duration, file.lastModified(), file))
+                    add(LibraryRecording(uri, file.name, file.length(), duration, file.lastModified(), file,
+                        relativeDirectory = file.relativeTo(dir).invariantSeparatorsPath.substringBeforeLast('/', "")))
                 }
             }
         }.sortedByDescending { it.modified }
@@ -64,7 +97,9 @@ object RecordingLibrary {
 
     fun rename(context: Context, recording: LibraryRecording, input: String) {
         val name = RecordingNamePolicy.displayName(input, recording.extension)
-        require(list(context).none { it.uri != recording.uri && it.displayName.equals(name, true) }) { "A set with that name already exists" }
+        require(list(context).none {
+            it.uri != recording.uri && it.relativeDirectory == recording.relativeDirectory && it.displayName.equals(name, true)
+        }) { "A recording with that name already exists in this folder" }
         recording.legacyFile?.let { source ->
             val target = File(source.parentFile, name)
             if (source.name == name) return

@@ -50,7 +50,7 @@ track next to the master, for example each deck post-fader, ready to mix again i
 - Each track gets its own lane with a live 3-band waveform, a level meter, an arm button and its
   own gain. The master keeps its gain, safety limiter, MP3 copy and livestream feed.
 - Tracks are saved lossless (an MP3 set records its tracks as FLAC) in
-  `Music/DJMRec/mix_<date> tracks/` and start and stop on the same sample as the master.
+  `Music/DJMRec/tracks_<date>/` and start and stop on the same sample as the master.
 - On the **DJM-A9** and **DJM-750MK2** you can choose what each USB pair carries (a channel post- or
   pre-fader, Mic, Rec Out) from the track's source menu; the original routing is restored when
   capture stops. Other mixers and USB interfaces record their pairs as they are routed on the
