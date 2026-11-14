@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.48.0 (2026-11-14)
+
+### Cubilux CB5
+- Add support for the Cubilux CB5, whose three stereo inputs arrive as separate USB
+  interfaces: Recording setup lists every input pair, records only the ports you choose and
+  binds capture to the selected port. The interface's clock is read back and checked before
+  capture starts.
+- Add Sync inputs to Track 1 (Settings > Capture, off by default) for devices whose inputs run
+  on their own clocks: a polyphase resampler steered from Track 1's frame count keeps the
+  other inputs locked to it instead of drifting apart over a long set. Every input then shares
+  the same 40 ms of buffering. Capture waits until all selected inputs are open and discards
+  the probe audio, so no track starts ahead of another; diagnostics reports the buffered
+  frames and the correction applied.
+- Build the native library for 16 KB memory pages (NDK r28c), so the app runs on devices that
+  use them.
+
+### Mix and multitrack
+- Record any combination of the selected inputs in selection order, each into its own file
+  under `Music/DJMRec/tracks_<session>/` next to the mix, with its own arm switch, gain, meter
+  and waveform.
+- Add a routable Mix: choose which channel feeds the left and right side (Track 1 L/R,
+  Track 2 L/R and so on, or None, or one channel twice for mono). The Mix has its own gain and
+  is what the set recording, the livestream and the saved video carry.
+- Allow Track and Mix gain changes while recording or while paused, in 0.5 dB steps.
+
+### Library
+- Keep a session's track files in one `tracks_<session>` folder and list them as a
+  collapsible folder in the library. Tracks with the same name in different sessions stay
+  separate, and search matches folder names as well as file names.
+- Add folder actions: long-press a folder to rename or delete it. Renaming moves every file and
+  rolls back if one fails; deleting moves the folder to Trash with Undo and says how many
+  files had to be deleted permanently.
+- Long-press a recording for quick Rename and Delete.
+- Play recordings while a USB interface is connected: capture keeps the sound card detached,
+  so the library now rebinds it to Android, routes playback to the interface's outputs and
+  shows the route, then gives the card back to monitoring when you leave.
+- Recover rows that Android left pending in the media database, including on Android 10, and
+  close the session cleanly when the app is swiped away.
+
+### Platform
+- Target Android 17 (API 37).
+- Remove the in-app updater, Firebase telemetry, Google sign-in and cloud configuration.
+  Diagnostics stay on the device, and YouTube streaming uses credentials you enter yourself.
+- Install as `com.audiopro.djmrec.cb5`, so the app can sit next to an older version; it still
+  uses the same `Music/DJMRec` folder.
+
 ## v0.47.1 (2026-10-11)
 
 - Fix recordings on the DJM-750MK2 playing back at double speed. The mixer only streams at
