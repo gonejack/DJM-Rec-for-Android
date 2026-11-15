@@ -61,62 +61,103 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     // Keep-awake is owned by MainActivity (window flag) so it holds on every screen while a
     // recording is active; this screen no longer toggles it.
     if (inputsOpen) InputPicker(viewModel) { inputsOpen = false }
-    if (setupOpen) ModalBottomSheet(onDismissRequest = { setupOpen = false },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (device?.recordsSelectedInputs == true) "Mix & recording" else "Recording setup", style = MaterialTheme.typography.headlineSmall)
-            RecordingSetupControls(viewModel)
-            Button(onClick = { setupOpen = false }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+    if (setupOpen)
+        ModalBottomSheet(onDismissRequest = { setupOpen = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(if (device?.recordsSelectedInputs == true) "Mix & recording" else "Recording setup", style = MaterialTheme.typography.headlineSmall)
+                RecordingSetupControls(viewModel)
+                Button(onClick = { setupOpen = false }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+            }
         }
-    }
-    if (stopPrompt) AlertDialog(onDismissRequest = { stopPrompt = false },
-        title = { Text("Save this set?") }, text = { Text("Recording will finish. Input monitoring stays ready for your next set.") },
-        confirmButton = { TextButton(onClick = { stopPrompt = false; powerSave = false; viewModel.stopRecording() }) { Text("Stop & save") } },
-        dismissButton = { TextButton(onClick = { stopPrompt = false }) { Text("Keep recording") } })
-    if (detailsOpen) AlertDialog(onDismissRequest = { detailsOpen = false }, title = { Text("Input status") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text((state as? RecordingState.Error)?.message ?: health.message)
-            Text(device?.allInOneProfile?.setupHint ?: device?.pioneerMixerProfile?.let {
-                if (it.isHardwareConfirmed) "Recording confirmed on ${it.displayName}."
-                else "${it.displayName}: implemented profile, physical validation pending."
-            } ?: "Use a USB audio data cable. Grant audio and USB permission when prompted.")
-            if (health.freeBytes in 1 until Long.MAX_VALUE)
-                Text(String.format(Locale.US, "%.1f GB available", health.freeBytes / 1_073_741_824.0))
-        } }, confirmButton = { TextButton(onClick = { detailsOpen = false }) { Text("OK") } })
-    val inputMessage = when {
-        saving -> "Finalizing recording..."
-        state is RecordingState.Error -> (state as RecordingState.Error).message
-        active && (levels.left.isClipping || levels.right.isClipping) -> "Clipping: lower input gain"
-        active && limiterReduction >= 3f -> "Limiter active: lower Mix gain"
-        state is RecordingState.Recording && awaitingAudio &&
-            (health.level == RecordingHealthLevel.GOOD || health.level == RecordingHealthLevel.SILENCE) -> "Waiting for audio"
-        device == null -> connectionNotice ?: "Connect USB audio"
-        else -> health.message
-    }
-    val inputAttention = saving || state is RecordingState.Error ||
-        (active && (levels.left.isClipping || levels.right.isClipping || limiterReduction >= 3f)) ||
-        health.level == RecordingHealthLevel.LOW_BATTERY || health.level == RecordingHealthLevel.OVERHEATING
+    if (stopPrompt)
+        AlertDialog(
+            onDismissRequest = { stopPrompt = false },
+            title = { Text("Save this set?") },
+            text = { Text("Recording will finish. Input monitoring stays ready for your next set.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        stopPrompt = false
+                        powerSave = false
+                        viewModel.stopRecording()
+                    }) {
+                        Text("Stop & save")
+                    }
+            },
+            dismissButton = { TextButton(onClick = { stopPrompt = false }) { Text("Keep recording") } })
+    if (detailsOpen)
+        AlertDialog(
+            onDismissRequest = { detailsOpen = false },
+            title = { Text("Input status") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text((state as? RecordingState.Error)?.message ?: health.message)
+                    Text(
+                        device?.allInOneProfile?.setupHint
+                            ?: device?.pioneerMixerProfile?.let {
+                                if (it.isHardwareConfirmed) "Recording confirmed on ${it.displayName}."
+                                else "${it.displayName}: implemented profile, physical validation pending."
+                            }
+                            ?: "Use a USB audio data cable. Grant audio and USB permission when prompted.")
+                    if (health.freeBytes in 1 until Long.MAX_VALUE) Text(String.format(Locale.US, "%.1f GB available", health.freeBytes / 1_073_741_824.0))
+                }
+            },
+            confirmButton = { TextButton(onClick = { detailsOpen = false }) { Text("OK") } })
+    val inputMessage =
+        when {
+            saving -> "Finalizing recording..."
+            state is RecordingState.Error -> (state as RecordingState.Error).message
+            active && (levels.left.isClipping || levels.right.isClipping) -> "Clipping: lower input gain"
+            active && limiterReduction >= 3f -> "Limiter active: lower Mix gain"
+            state is RecordingState.Recording && awaitingAudio && (health.level == RecordingHealthLevel.GOOD || health.level == RecordingHealthLevel.SILENCE) ->
+                "Waiting for audio"
+            device == null -> connectionNotice ?: "Connect USB audio"
+            else -> health.message
+        }
+    val inputAttention =
+        saving ||
+            state is RecordingState.Error ||
+            (active && (levels.left.isClipping || levels.right.isClipping || limiterReduction >= 3f)) ||
+            health.level == RecordingHealthLevel.LOW_BATTERY ||
+            health.level == RecordingHealthLevel.OVERHEATING
     val inputHeader: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).background(if (device != null) AccentGreen else TextSecondary, CircleShape))
-            Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable { inputsOpen = true }.padding(horizontal = 10.dp),
+            Column(
+                Modifier.weight(1f).heightIn(min = 48.dp).clickable { inputsOpen = true }.padding(horizontal = 10.dp),
                 verticalArrangement = Arrangement.Center) {
-                Text(device?.captureLabel ?: "Connect your mixer", maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium)
-                Text(device?.let { "${it.preferredSampleRate / 1000f} kHz / ${it.bitResolution}-bit / USB" }
-                    ?: "USB audio input", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-            }
-            Surface(onClick = { detailsOpen = true }, shape = RoundedCornerShape(12.dp),
-                color = SurfaceVariantDark.copy(alpha = 0.5f), modifier = Modifier.width(104.dp).height(48.dp)) {
-                Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(if (inputAttention) Icons.Default.WarningAmber else Icons.Default.Info, null,
-                        Modifier.size(12.dp), tint = if (inputAttention) AccentAmber else AccentGreen)
-                    Text(inputMessage, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                    Text(
+                        device?.captureLabel ?: "Connect your mixer",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        device?.let { "${it.preferredSampleRate / 1000f} kHz / ${it.bitResolution}-bit / USB" } ?: "USB audio input",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary)
                 }
-            }
+            Surface(
+                onClick = { detailsOpen = true },
+                shape = RoundedCornerShape(12.dp),
+                color = SurfaceVariantDark.copy(alpha = 0.5f),
+                modifier = Modifier.width(104.dp).height(48.dp)) {
+                    Row(
+                        Modifier.padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(
+                                if (inputAttention) Icons.Default.WarningAmber else Icons.Default.Info,
+                                null,
+                                Modifier.size(12.dp),
+                                tint = if (inputAttention) AccentAmber else AccentGreen)
+                            Text(
+                                inputMessage,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary)
+                        }
+                }
         }
     }
     val signalPanel: @Composable () -> Unit = {
@@ -125,33 +166,41 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                 val compact = maxHeight < 160.dp
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (device?.recordsSelectedInputs != true || multitrackTracks.isEmpty()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically) {
-                            val label = when {
-                                saving -> "SAVING"
-                                state is RecordingState.Recording -> "REC"
-                                state is RecordingState.Paused -> "PAUSED"
-                                state is RecordingState.Preparing -> "ARMING"
-                                state is RecordingState.Monitoring -> "MONITORING"
-                                else -> "STANDBY"
-                            }
-                            Text(label,
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            val label =
+                                when {
+                                    saving -> "SAVING"
+                                    state is RecordingState.Recording -> "REC"
+                                    state is RecordingState.Paused -> "PAUSED"
+                                    state is RecordingState.Preparing -> "ARMING"
+                                    state is RecordingState.Monitoring -> "MONITORING"
+                                    else -> "STANDBY"
+                                }
+                            Text(
+                                label,
                                 color = if (active) AccentRed else AccentGreen,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                modifier = Modifier.heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }
-                            )
-                            Text(if (multitrackTracks.isNotEmpty()) "MULTITRACK" else if (waveform) "3-BAND" else "METERS",
-                                style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                modifier = Modifier.heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite })
+                            Text(
+                                if (multitrackTracks.isNotEmpty()) "MULTITRACK" else if (waveform) "3-BAND" else "METERS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary)
                         }
                     }
                     if (multitrackTracks.isNotEmpty() && !compact) {
-                        // Advanced mode: one lane per input pair; the master lane carries the set's meter.
+                        // Advanced mode: one lane per input pair; the master lane carries the set's
+                        // meter.
                         MultitrackPanel(viewModel, onOpenSetup = { setupOpen = true }, modifier = Modifier.fillMaxWidth().weight(1f))
                     } else {
-                        if (waveform && !compact) LiveRgbWaveform(viewModel.waveformBins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
-                            active = state is RecordingState.Monitoring || active, onVisible = viewModel::setWaveformVisible)
+                        if (waveform && !compact)
+                            LiveRgbWaveform(
+                                viewModel.waveformBins,
+                                Modifier.fillMaxWidth().weight(1f),
+                                smooth = smooth,
+                                active = state is RecordingState.Monitoring || active,
+                                onVisible = viewModel::setWaveformVisible)
                         else if (!compact) Spacer(Modifier.weight(1f))
                         StereoVuMeter(levels)
                     }
@@ -163,49 +212,54 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val selectedInputs = device?.takeIf { it.recordsSelectedInputs }?.selectedInterfaceNumbers?.size
             if (selectedInputs != null) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(elapsedText(elapsed), modifier = Modifier.weight(1f),
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        elapsedText(elapsed),
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("${format.name} / ${AudioGain.format(gain)}",
-                            style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                        Text("${format.name} / ${AudioGain.format(gain)}", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                         Text("${multitrackTracks.count { it.armed }} tracks + Mix", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                     }
                 }
-            } else Column {
-                Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
-                val armedTracks = if (multitrackActive) multitrackTracks.count { it.armed } else 0
-                Text("${format.name} / ${AudioGain.format(gain)}" +
-                    if (armedTracks > 0) " / +$armedTracks tracks" else "",
-                    style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-            }
+            } else
+                Column {
+                    Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
+                    val armedTracks = if (multitrackActive) multitrackTracks.count { it.armed } else 0
+                    Text(
+                        "${format.name} / ${AudioGain.format(gain)}" + if (armedTracks > 0) " / +$armedTracks tracks" else "",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary)
+                }
             val reducedMotion = rememberReducedMotion()
-            AnimatedContent(
-                targetState = active,
-                transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
-                label = "transport"
-            ) { transportActive ->
+            AnimatedContent(targetState = active, transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) }, label = "transport") {
+                transportActive ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (transportActive) {
-                        OutlinedButton(onClick = { if (state is RecordingState.Paused) viewModel.resumeRecording() else viewModel.pauseRecording() },
-                            enabled = !saving, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                            Icon(if (state is RecordingState.Paused) Icons.Default.PlayArrow else Icons.Default.Pause, null)
-                            Text(if (state is RecordingState.Paused) "Resume" else "Pause")
-                        }
-                        Button(onClick = { if (confirmStop) stopPrompt = true else viewModel.stopRecording() }, enabled = !saving,
+                        OutlinedButton(
+                            onClick = { if (state is RecordingState.Paused) viewModel.resumeRecording() else viewModel.pauseRecording() },
+                            enabled = !saving,
                             modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                            if (saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Stop, null)
-                            Text(if (saving) " Saving" else " Save set")
-                        }
+                                Icon(if (state is RecordingState.Paused) Icons.Default.PlayArrow else Icons.Default.Pause, null)
+                                Text(if (state is RecordingState.Paused) "Resume" else "Pause")
+                            }
+                        Button(
+                            onClick = { if (confirmStop) stopPrompt = true else viewModel.stopRecording() },
+                            enabled = !saving,
+                            modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
+                                if (saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Stop, null)
+                                Text(if (saving) " Saving" else " Save set")
+                            }
                     } else {
-                        Button(onClick = viewModel::startRecording, enabled = device != null && state !is RecordingState.Preparing && !saving,
+                        Button(
+                            onClick = viewModel::startRecording,
+                            enabled = device != null && state !is RecordingState.Preparing && !saving,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = AccentRed, contentColor = BackgroundDark)) {
-                            if (state is RecordingState.Preparing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            else Icon(Icons.Default.FiberManualRecord, null)
-                            Text(if (state is RecordingState.Preparing) " Arming input" else " Record set", fontWeight = FontWeight.Bold)
-                        }
+                                if (state is RecordingState.Preparing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                else Icon(Icons.Default.FiberManualRecord, null)
+                                Text(if (state is RecordingState.Preparing) " Arming input" else " Record set", fontWeight = FontWeight.Bold)
+                            }
                     }
                 }
             }
@@ -214,11 +268,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     // Power saving replaces the whole workspace: the waveform/meters leave composition (which
     // also stops the native waveform analyzer) while capture keeps running untouched.
     val reducedMotion = rememberReducedMotion()
-    AnimatedContent(
-        targetState = powerSave,
-        transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
-        label = "powerSave"
-    ) { powerSaveOn ->
+    AnimatedContent(targetState = powerSave, transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) }, label = "powerSave") { powerSaveOn ->
         if (powerSaveOn) {
             PowerSaveOverlay(
                 recording = active,
@@ -226,44 +276,53 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                 elapsedMillis = elapsed,
                 onStop = {
                     if (confirmStop) stopPrompt = true
-                    else { powerSave = false; viewModel.stopRecording() }
+                    else {
+                        powerSave = false
+                        viewModel.stopRecording()
+                    }
                 },
-                onClose = { powerSave = false }
-            )
-        } else BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            if (maxWidth >= 600.dp && maxWidth > maxHeight) {
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                onClose = { powerSave = false })
+        } else
+            BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                if (maxWidth >= 600.dp && maxWidth > maxHeight) {
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            inputHeader()
+                            Box(Modifier.weight(1f)) { signalPanel() }
+                        }
+                        Column(Modifier.weight(1f).align(Alignment.CenterVertically)) { transport() }
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         inputHeader()
                         Box(Modifier.weight(1f)) { signalPanel() }
+                        transport()
                     }
-                    Column(Modifier.weight(1f).align(Alignment.CenterVertically)) { transport() }
-                }
-            } else {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    inputHeader()
-                    Box(Modifier.weight(1f)) { signalPanel() }
-                    transport()
                 }
             }
-        }
     }
     saved?.let { recording ->
-        AlertDialog(onDismissRequest = viewModel::dismissSavedRecording,
+        AlertDialog(
+            onDismissRequest = viewModel::dismissSavedRecording,
             title = { Text(if (recording.notice != null) "Recording stopped" else "Set saved") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Duration: ${elapsedText(recording.durationMillis)}")
-                    recording.tracksFolder?.takeIf { recording.tracksSaved > 0 }?.let {
-                        Text("Tracks: $it")
-                    }
+                    recording.tracksFolder?.takeIf { recording.tracksSaved > 0 }?.let { Text("Tracks: $it") }
                     Text("Mix Track: Music/DJMRec/${recording.name}")
                     recording.alsoSaved?.let { Text("Mix Track MP3 Copy: Music/DJMRec/$it") }
                     recording.notice?.let { Text(it) }
                 }
             },
-            confirmButton = { TextButton(onClick = { viewModel.dismissSavedRecording(); onOpenLibrary() }) { Text("Open sets") } },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.dismissSavedRecording()
+                        onOpenLibrary()
+                    }) {
+                        Text("Open sets")
+                    }
+            },
             dismissButton = { TextButton(onClick = viewModel::dismissSavedRecording) { Text("Done") } })
     }
 }
@@ -287,8 +346,7 @@ internal fun RecordingSetupControls(viewModel: MainViewModel) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Also save an MP3 copy", style = MaterialTheme.typography.bodyMedium)
-                Text("320 kbps Mix copy, alongside the lossless ${format.name} audio.",
-                    style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text("320 kbps Mix copy, alongside the lossless ${format.name} audio.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             Switch(mp3Copy, viewModel::setMp3Copy, enabled = enabled)
         }
@@ -297,8 +355,13 @@ internal fun RecordingSetupControls(viewModel: MainViewModel) {
         Text("${if (device?.recordsSelectedInputs == true) "Mix gain" else "Gain"}: ${AudioGain.format(gain)}", modifier = Modifier.weight(1f))
         TextButton(onClick = { viewModel.setRecordingGainDb(0f) }, enabled = gainEnabled) { Text("Reset to 0 dB") }
     }
-    Slider(gain, viewModel::setRecordingGainDb, enabled = gainEnabled,
-        valueRange = AudioGain.MIN_DB..AudioGain.MAX_DB, steps = AudioGain.SLIDER_STEPS, modifier = Modifier.semantics { contentDescription = "Recording gain in decibels" })
+    Slider(
+        gain,
+        viewModel::setRecordingGainDb,
+        enabled = gainEnabled,
+        valueRange = AudioGain.MIN_DB..AudioGain.MAX_DB,
+        steps = AudioGain.SLIDER_STEPS,
+        modifier = Modifier.semantics { contentDescription = "Recording gain in decibels" })
     Text("0 dB preserves input level. Keep peaks below 0 dBFS.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
     val advanced by viewModel.advancedMode.collectAsState()
     val multipleInputs = device?.recordsSelectedInputs == true
@@ -313,27 +376,36 @@ internal fun RecordingSetupControls(viewModel: MainViewModel) {
                         false -> "This input has a single stereo pair, so there are no extra tracks to record."
                         else -> "Record every input pair as its own track next to the master, with per-track gain and waveform."
                     },
-                    style = MaterialTheme.typography.bodySmall, color = TextSecondary
-                )
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary)
             }
-            Switch(advanced, viewModel::setAdvancedMode, enabled = enabled,
+            Switch(
+                advanced,
+                viewModel::setAdvancedMode,
+                enabled = enabled,
                 modifier = Modifier.semantics { contentDescription = "Advanced mode: multitrack recording" })
         }
         if (advanced && multitrackCapable == true) {
-            Text("Track files are saved lossless (an MP3 set records its tracks as FLAC) in a folder next to the set, " +
-                "starting and stopping on the same sample as the master.",
-                style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text(
+                "Track files are saved lossless (an MP3 set records its tracks as FLAC) in a folder next to the set, " +
+                    "starting and stopping on the same sample as the master.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary)
         }
     }
     if (device?.requiresIsoCapture == true && !multipleInputs) {
         Text(if (advanced) "Master pair" else "Stereo input pair", style = MaterialTheme.typography.titleSmall)
         ChannelPairSelector(pair, device!!.channelCount / 2, enabled, viewModel::setUsbChannelOffset)
-        Text(when {
-            advanced -> "Auto puts the master on the mixer's master slot (USB 1/2 on other devices). The other pairs become tracks."
-            else -> device?.allInOneProfile?.recordChannelOffset?.let { "Auto: master return on USB ${it + 1}/${it + 2}." }
-                ?: if (device?.pioneerMixerProfile == null) "Auto uses USB 1/2. Choose another pair to audition it before recording."
-                else "Auto locks an audible pair; S11 uses dedicated REC OUT. Selection is remembered per mixer."
-        }, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        Text(
+            when {
+                advanced -> "Auto puts the master on the mixer's master slot (USB 1/2 on other devices). The other pairs become tracks."
+                else ->
+                    device?.allInOneProfile?.recordChannelOffset?.let { "Auto: master return on USB ${it + 1}/${it + 2}." }
+                        ?: if (device?.pioneerMixerProfile == null) "Auto uses USB 1/2. Choose another pair to audition it before recording."
+                        else "Auto locks an audible pair; S11 uses dedicated REC OUT. Selection is remembered per mixer."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary)
     }
 }
 

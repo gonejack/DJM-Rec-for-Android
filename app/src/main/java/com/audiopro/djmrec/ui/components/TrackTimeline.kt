@@ -33,18 +33,11 @@ import com.audiopro.djmrec.ui.theme.TextSecondary
 import kotlin.math.floor
 
 /**
- * One track lane of the multitrack timeline: rekordbox's 3-band detail waveform (see
- * [ThreeBand]) scrolling right to left, newest audio at the playhead on the right edge.
- * Only the draw phase reads [revision], so new data redraws the lane without recomposing.
+ * One track lane of the multitrack timeline: rekordbox's 3-band detail waveform (see [ThreeBand]) scrolling right to left, newest audio at the playhead on the
+ * right edge. Only the draw phase reads [revision], so new data redraws the lane without recomposing.
  */
 @Composable
-fun TimelineWaveform(
-    history: WaveformHistory,
-    revision: State<Long>,
-    dimmed: Boolean,
-    recording: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun TimelineWaveform(history: WaveformHistory, revision: State<Long>, dimmed: Boolean, recording: Boolean, modifier: Modifier = Modifier) {
     val cache = remember(history) { TimelinePathCache() }
     Canvas(modifier) {
         drawRoundRect(BackgroundDark, cornerRadius = CornerRadius(6.dp.toPx()))
@@ -67,10 +60,7 @@ fun TimelineWaveform(
 
 private fun DrawScope.drawPlayhead(recording: Boolean) {
     val x = size.width - 1.dp.toPx()
-    drawLine(
-        if (recording) AccentRed else TextSecondary.copy(alpha = 0.6f),
-        Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.5.dp.toPx()
-    )
+    drawLine(if (recording) AccentRed else TextSecondary.copy(alpha = 0.6f), Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.5.dp.toPx())
 }
 
 /** Band regions, rebuilt only when the history or size changes. */
@@ -88,7 +78,11 @@ private class TimelinePathCache {
         for (index in 0 until count) {
             val x = size.width - (count - index) * columnWidth
             if (x + columnWidth < 0f) continue
-            paths.addColumn(x, x + columnWidth + 0.5f, center, center * 0.92f,
+            paths.addColumn(
+                x,
+                x + columnWidth + 0.5f,
+                center,
+                center * 0.92f,
                 WaveformDisplayScale.extent(ThreeBand.lowExtent(history.value(index, 1))),
                 WaveformDisplayScale.extent(ThreeBand.midExtent(history.value(index, 2))),
                 WaveformDisplayScale.extent(ThreeBand.highExtent(history.value(index, 3))))
@@ -99,16 +93,11 @@ private class TimelinePathCache {
 }
 
 /**
- * Time axis above the lanes. While recording, ticks move with the set's elapsed time
- * (labels every 10 s); otherwise it shows how far back the live input history reaches.
+ * Time axis above the lanes. While recording, ticks move with the set's elapsed time (labels every 10 s); otherwise it shows how far back the live input
+ * history reaches.
  */
 @Composable
-fun TimelineRuler(
-    spanMillis: Double,
-    elapsedMillis: Long,
-    recording: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun TimelineRuler(spanMillis: Double, elapsedMillis: Long, recording: Boolean, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
     val style = TextStyle(color = TextSecondary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
     Canvas(modifier) {
@@ -121,8 +110,7 @@ fun TimelineRuler(
             while (tick >= 0 && now - tick <= spanMillis) {
                 val x = xFor(now - tick)
                 val major = (tick.toLong() / 5_000L) % 2L == 0L
-                drawLine(TextSecondary.copy(alpha = if (major) 0.7f else 0.35f),
-                    Offset(x, baseline - (if (major) 8.dp else 4.dp).toPx()), Offset(x, baseline))
+                drawLine(TextSecondary.copy(alpha = if (major) 0.7f else 0.35f), Offset(x, baseline - (if (major) 8.dp else 4.dp).toPx()), Offset(x, baseline))
                 if (major) {
                     val layout = measurer.measure(rulerLabel(tick.toLong() / 1000L), style)
                     val left = (x - layout.size.width / 2f).coerceIn(0f, size.width - layout.size.width)
@@ -142,9 +130,13 @@ fun TimelineRuler(
         // Playhead marker: a small downward triangle at "now".
         val tip = size.width - 1.dp.toPx()
         val half = 4.dp.toPx()
-        val marker = Path().apply {
-            moveTo(tip - half, baseline - 8.dp.toPx()); lineTo(tip + half, baseline - 8.dp.toPx()); lineTo(tip, baseline); close()
-        }
+        val marker =
+            Path().apply {
+                moveTo(tip - half, baseline - 8.dp.toPx())
+                lineTo(tip + half, baseline - 8.dp.toPx())
+                lineTo(tip, baseline)
+                close()
+            }
         drawPath(marker, if (recording) AccentRed else TextSecondary)
     }
 }
@@ -173,11 +165,12 @@ private const val CEILING_DB = 3f
 
 private fun fraction(db: Float) = ((db - FLOOR_DB) / (CEILING_DB - FLOOR_DB)).coerceIn(0f, 1f)
 
-private fun meterColor(db: Float): Color = when {
-    db >= 0f -> MeterRed
-    db >= -6f -> MeterAmber
-    else -> MeterGreen
-}
+private fun meterColor(db: Float): Color =
+    when {
+        db >= 0f -> MeterRed
+        db >= -6f -> MeterAmber
+        else -> MeterGreen
+    }
 
 private fun DrawScope.drawMeterBar(level: ChannelLevel, top: Float, height: Float) {
     val radius = CornerRadius(height / 2f)

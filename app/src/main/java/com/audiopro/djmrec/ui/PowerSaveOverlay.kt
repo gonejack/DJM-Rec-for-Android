@@ -45,22 +45,13 @@ import com.audiopro.djmrec.ui.theme.TextSecondary
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 
 /**
- * Battery-saver overlay: a true-black (AMOLED-off) screen showing only a red "recording
- * live" dot and the running timer. Waveform, meters and previews leave composition while
- * this is up (which also switches off the native waveform analyzer through the usual
- * visibility plumbing) and the system bars are hidden.
+ * Battery-saver overlay: a true-black (AMOLED-off) screen showing only a red "recording live" dot and the running timer. Waveform, meters and previews leave
+ * composition while this is up (which also switches off the native waveform analyzer through the usual visibility plumbing) and the system bars are hidden.
  *
- * Purely visual: capture, encoding and the recording notification are untouched, so an
- * ongoing recording never notices power saving mode.
+ * Purely visual: capture, encoding and the recording notification are untouched, so an ongoing recording never notices power saving mode.
  */
 @Composable
-fun PowerSaveOverlay(
-    recording: Boolean,
-    saving: Boolean,
-    elapsedMillis: Long,
-    onStop: () -> Unit,
-    onClose: () -> Unit
-) {
+fun PowerSaveOverlay(recording: Boolean, saving: Boolean, elapsedMillis: Long, onStop: () -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     val reducedMotion = rememberReducedMotion()
     // Predictable back: system back closes power saving instead of leaving the app.
@@ -76,65 +67,54 @@ fun PowerSaveOverlay(
         Column(
             modifier = Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Classic blinking REC dot while recording (steady grey when armed only, steady red
-            // under reduced motion). The blink is pure alpha on one 14dp dot -- negligible power
-            // versus the blacked-out screen.
-            val dotAlpha = if (!recording || reducedMotion) 1f else {
-                val transition = rememberInfiniteTransition(label = "recDot")
-                val blink by transition.animateFloat(
-                    initialValue = 1f,
-                    targetValue = 0f,
-                    animationSpec = infiniteRepeatable(
-                        animation = keyframes {
-                            durationMillis = 1_000
-                            1f at 600
-                            0f at 700
-                        },
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "recDotBlink"
-                )
-                blink
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Classic blinking REC dot while recording (steady grey when armed only, steady red
+                // under reduced motion). The blink is pure alpha on one 14dp dot -- negligible
+                // power
+                // versus the blacked-out screen.
+                val dotAlpha =
+                    if (!recording || reducedMotion) 1f
+                    else {
+                        val transition = rememberInfiniteTransition(label = "recDot")
+                        val blink by
+                            transition.animateFloat(
+                                initialValue = 1f,
+                                targetValue = 0f,
+                                animationSpec =
+                                    infiniteRepeatable(
+                                        animation =
+                                            keyframes {
+                                                durationMillis = 1_000
+                                                1f at 600
+                                                0f at 700
+                                            },
+                                        repeatMode = RepeatMode.Restart),
+                                label = "recDotBlink")
+                        blink
+                    }
+                Box(Modifier.size(14.dp).background((if (recording) AccentRed else Color(0xFF4A4F63)).copy(alpha = dotAlpha), CircleShape))
+                Text(elapsedText(elapsedMillis), style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace), color = TextPrimary)
+                Text(
+                    when {
+                        saving -> "Saving..."
+                        recording -> "Recording live"
+                        else -> "Monitoring - not recording"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
-            Box(
-                Modifier.size(14.dp).background(
-                    (if (recording) AccentRed else Color(0xFF4A4F63)).copy(alpha = dotAlpha),
-                    CircleShape
-                )
-            )
-            Text(
-                elapsedText(elapsedMillis),
-                style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace),
-                color = TextPrimary
-            )
-            Text(
-                when {
-                    saving -> "Saving..."
-                    recording -> "Recording live"
-                    else -> "Monitoring - not recording"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-            )
-        }
         Row(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .navigationBarsPadding().padding(24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedButton(
-                onClick = onClose,
-                modifier = Modifier.weight(1f).heightIn(min = 56.dp)
-            ) { Text("Close") }
-            Button(
-                onClick = onStop,
-                enabled = recording && !saving,
-                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentRed)
-            ) { Text(if (saving) "Saving" else "Stop recording") }
-        }
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onClose, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Close") }
+                Button(
+                    onClick = onStop,
+                    enabled = recording && !saving,
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed)) {
+                        Text(if (saving) "Saving" else "Stop recording")
+                    }
+            }
     }
 }

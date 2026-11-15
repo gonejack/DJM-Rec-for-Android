@@ -1,9 +1,8 @@
 package com.audiopro.djmrec.editor
 
 /**
- * The recorder's native WAV/FLAC/MP3 writers, opened on a MediaStore descriptor for export.
- * Samples are interleaved, left-justified int32 (full scale = Int.MAX_VALUE), like capture.
- * One handle must only be used from one thread at a time.
+ * The recorder's native WAV/FLAC/MP3 writers, opened on a MediaStore descriptor for export. Samples are interleaved, left-justified int32 (full scale =
+ * Int.MAX_VALUE), like capture. One handle must only be used from one thread at a time.
  */
 internal object NativeAudioFileWriter {
     init {

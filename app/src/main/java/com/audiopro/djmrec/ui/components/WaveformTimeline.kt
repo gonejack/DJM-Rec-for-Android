@@ -4,6 +4,7 @@ package com.audiopro.djmrec.ui.components
 internal class WaveformTimeline {
     var bins = FloatArray(0)
         private set
+
     private var sequence = -1
     private var cursor = 0.0
     private var end = 0.0
@@ -34,7 +35,11 @@ internal class WaveformTimeline {
 
     /** Number of newest bins withheld; small latency absorbs polling jitter. */
     fun lag(frameNanos: Long, smooth: Boolean): Float {
-        if (!smooth) { cursor = end; lastFrame = frameNanos; return 0f }
+        if (!smooth) {
+            cursor = end
+            lastFrame = frameNanos
+            return 0f
+        }
         if (lastFrame != 0L) {
             val elapsed = ((frameNanos - lastFrame) / 1_000_000.0).coerceIn(0.0, 100.0)
             cursor = (cursor + elapsed / binMillis).coerceAtMost(end)

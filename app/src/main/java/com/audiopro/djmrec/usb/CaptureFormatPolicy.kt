@@ -8,7 +8,8 @@ object CaptureFormatPolicy {
     fun ratesInRange(minimum: Int, maximum: Int, resolution: Int): List<Int> {
         if (minimum !in 1..maximum || maximum > 384_000 || resolution < 0) return emptyList()
         if (minimum == maximum) return listOf(minimum)
-        return listOf(44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000)
-            .filter { it in minimum..maximum && (resolution == 0 || (it - minimum) % resolution == 0) }
+        return listOf(44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000).filter {
+            it in minimum..maximum && (resolution == 0 || (it - minimum) % resolution == 0)
+        }
     }
 }

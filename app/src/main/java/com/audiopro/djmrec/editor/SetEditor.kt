@@ -6,6 +6,9 @@ import android.util.Log
 import com.audiopro.djmrec.audio.RecordingFormat
 import com.audiopro.djmrec.storage.LibraryRecording
 import com.audiopro.djmrec.storage.RecordingOutputManager
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,13 +20,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.coroutines.coroutineContext
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.roundToLong
 
 /** Result of one decoding pass over a recording, reused for every edit of it. */
-class EditorAnalysis internal constructor(
+class EditorAnalysis
+internal constructor(
     val recording: LibraryRecording,
     val sampleRate: Int,
     /** Channels in the source; the editor always writes stereo. */
@@ -34,32 +34,34 @@ class EditorAnalysis internal constructor(
     val hopPeaks: FloatArray,
     private val meter: LoudnessMeter
 ) {
-    val durationMillis: Long get() = totalFrames * 1000 / sampleRate
+    val durationMillis: Long
+        get() = totalFrames * 1000 / sampleRate
 
-    val samplePeak: Double get() = meter.samplePeak
+    val samplePeak: Double
+        get() = meter.samplePeak
 
     /** Integrated loudness of the kept range, or null if it is silent. */
     fun loudnessLufs(startMillis: Long, endMillis: Long): Double? =
-        meter.integratedLufs(
-            (startMillis / LoudnessMeter.HOP_MILLIS).toInt(),
-            (endMillis / LoudnessMeter.HOP_MILLIS).toInt()
-        )
+        meter.integratedLufs((startMillis / LoudnessMeter.HOP_MILLIS).toInt(), (endMillis / LoudnessMeter.HOP_MILLIS).toInt())
 }
 
 sealed interface EditorState {
     data object Idle : EditorState
+
     data class Analyzing(val recording: LibraryRecording, val progress: Float) : EditorState
+
     data class Ready(val analysis: EditorAnalysis) : EditorState
+
     data class Exporting(val analysis: EditorAnalysis, val progress: Float) : EditorState
+
     data class Exported(val analysis: EditorAnalysis, val uri: Uri, val displayName: String) : EditorState
+
     data class Failed(val message: String, val analysis: EditorAnalysis?) : EditorState
 }
 
 /**
- * Post-set editor session: one analysis pass (waveform overview, loudness, exact length), then
- * an export that trims, fades, normalizes loudness and writes a new MP3/WAV/FLAC next to the
- * original, which is never modified. Work runs on a process scope, so leaving the screen does
- * not cancel an export.
+ * Post-set editor session: one analysis pass (waveform overview, loudness, exact length), then an export that trims, fades, normalizes loudness and writes a
+ * new MP3/WAV/FLAC next to the original, which is never modified. Work runs on a process scope, so leaving the screen does not cancel an export.
  */
 object SetEditor {
     private const val TAG = "SetEditor"
@@ -159,23 +161,17 @@ object SetEditor {
                 }
             }
             if (total == 0L) throw java.io.IOException("the file holds no audio")
-            return EditorAnalysis(
-                recording, rate, decoder.channels, decoder.bitsPerSample, total,
-                hopPeaks.copyOf(hops), meter
-            )
+            return EditorAnalysis(recording, rate, decoder.channels, decoder.bitsPerSample, total, hopPeaks.copyOf(hops), meter)
         }
     }
 
     private suspend fun render(context: Context, analysis: EditorAnalysis, settings: EditSettings): Pair<Uri, String> {
         val recording = analysis.recording
         val keptEnd = minOf(settings.trimEndMillis, analysis.durationMillis)
-        val gainDb = EditMath.normalizationGainDb(
-            analysis.loudnessLufs(settings.trimStartMillis, keptEnd), settings.targetLufs
-        )
+        val gainDb = EditMath.normalizationGainDb(analysis.loudnessLufs(settings.trimStartMillis, keptEnd), settings.targetLufs)
         val format = settings.format
         val name = editedName(recording.title, format)
-        val output = RecordingOutputManager.createNamed(context, name, format)
-            ?: throw java.io.IOException("could not create $name in Music/DJMRec")
+        val output = RecordingOutputManager.createNamed(context, name, format) ?: throw java.io.IOException("could not create $name in Music/DJMRec")
         val bits = if (analysis.bitsPerSample >= 24) 24 else 16
         val handle = NativeAudioFileWriter.open(output.descriptor.fd, format.nativeValue, analysis.sampleRate, 2, bits)
         runCatching { output.descriptor.close() } // the native writer holds its own duplicate
@@ -241,8 +237,7 @@ object SetEditor {
         }
     }
 
-    private fun toInt32(sample: Double): Int =
-        (sample * 2147483648.0).roundToLong().coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+    private fun toInt32(sample: Double): Int = (sample * 2147483648.0).roundToLong().coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
 
     internal fun editedName(title: String, format: RecordingFormat): String {
         val base = title.removeSuffix(" (edit)").take(90)

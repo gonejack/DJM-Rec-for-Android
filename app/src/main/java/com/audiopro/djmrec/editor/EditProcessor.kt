@@ -28,8 +28,7 @@ object EditMath {
     const val MAX_BOOST_DB = 20.0
     const val MAX_CUT_DB = -30.0
 
-    fun millisToFrames(millis: Long, sampleRate: Int): Long =
-        if (millis == Long.MAX_VALUE) Long.MAX_VALUE else millis * sampleRate / 1000
+    fun millisToFrames(millis: Long, sampleRate: Int): Long = if (millis == Long.MAX_VALUE) Long.MAX_VALUE else millis * sampleRate / 1000
 
     /** Gain in dB that moves [measuredLufs] to [targetLufs], within sane limits. */
     fun normalizationGainDb(measuredLufs: Double?, targetLufs: Double?): Double {
@@ -48,17 +47,10 @@ object EditMath {
 }
 
 /**
- * Renders a trimmed, level-adjusted, faded copy of a recording in one streaming pass:
- * trim -> gain -> look-ahead limiter (-1 dBFS) -> fades. The limiter's delay is compensated,
- * so the output holds exactly the kept frames. Pure Kotlin so it can be unit tested.
+ * Renders a trimmed, level-adjusted, faded copy of a recording in one streaming pass: trim -> gain -> look-ahead limiter (-1 dBFS) -> fades. The limiter's
+ * delay is compensated, so the output holds exactly the kept frames. Pure Kotlin so it can be unit tested.
  */
-class EditProcessor(
-    sampleRate: Int,
-    private val channels: Int,
-    settings: EditSettings,
-    gainDb: Double,
-    sourceFrames: Long
-) {
+class EditProcessor(sampleRate: Int, private val channels: Int, settings: EditSettings, gainDb: Double, sourceFrames: Long) {
     private val startFrame = EditMath.millisToFrames(settings.trimStartMillis, sampleRate).coerceIn(0, sourceFrames)
     private val endFrame = EditMath.millisToFrames(settings.trimEndMillis, sampleRate).coerceIn(startFrame, sourceFrames)
     /** Frames the output file will contain. */
@@ -74,10 +66,7 @@ class EditProcessor(
     private var emitted = 0L
     private val scratch = DoubleArray(4096 * channels)
 
-    /**
-     * Feeds [frameCount] decoded source frames (interleaved, full scale = 1.0). Calls [emit] with
-     * finished output frames, in order.
-     */
+    /** Feeds [frameCount] decoded source frames (interleaved, full scale = 1.0). Calls [emit] with finished output frames, in order. */
     fun process(source: DoubleArray, frameCount: Int, emit: (DoubleArray, Int) -> Unit) {
         val first = max(startFrame - sourcePosition, 0L).toInt().coerceAtMost(frameCount)
         val last = min(endFrame - sourcePosition, frameCount.toLong()).toInt()
@@ -134,9 +123,8 @@ class EditProcessor(
 }
 
 /**
- * Kotlin twin of the recorder's native SafetyLimiter: sliding-window minimum of the gain each
- * frame needs, release smoothing, then a window average, applied to input delayed by the
- * window. Never exceeds [EditMath.CEILING]; exactly transparent below it.
+ * Kotlin twin of the recorder's native SafetyLimiter: sliding-window minimum of the gain each frame needs, release smoothing, then a window average, applied to
+ * input delayed by the window. Never exceeds [EditMath.CEILING]; exactly transparent below it.
  */
 class OfflineLimiter(sampleRate: Int, private val channels: Int) {
     private val window = max(2, ceil(sampleRate * LOOKAHEAD_MILLIS / 1000.0).toInt())

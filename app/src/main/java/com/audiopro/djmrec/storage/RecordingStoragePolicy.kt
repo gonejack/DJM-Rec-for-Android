@@ -12,11 +12,9 @@ object RecordingStoragePolicy {
         return sampleRate.coerceAtLeast(1).toLong() * channelCount.coerceAtLeast(1) * bytesPerSample
     }
 
-    fun requiredStartBytes(bytesPerSecond: Long): Long =
-        max(MINIMUM_START_BYTES, bytesPerSecond.coerceAtLeast(1) * 10 * 60)
+    fun requiredStartBytes(bytesPerSecond: Long): Long = max(MINIMUM_START_BYTES, bytesPerSecond.coerceAtLeast(1) * 10 * 60)
 
-    fun remainingSeconds(freeBytes: Long, bytesPerSecond: Long): Long =
-        freeBytes.coerceAtLeast(0) / bytesPerSecond.coerceAtLeast(1)
+    fun remainingSeconds(freeBytes: Long, bytesPerSecond: Long): Long = freeBytes.coerceAtLeast(0) / bytesPerSecond.coerceAtLeast(1)
 
     fun shouldRollWav(bytesWritten: Long): Boolean = bytesWritten >= WAV_ROLL_BYTES
 }

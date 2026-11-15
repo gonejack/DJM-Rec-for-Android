@@ -8,7 +8,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ThreeBandTest {
-    @Test fun highBandUsesRekordboxRaisedCosine() {
+    @Test
+    fun highBandUsesRekordboxRaisedCosine() {
         assertEquals(0f, ThreeBand.highExtent(0f), 0f)
         assertEquals(0.5f, ThreeBand.highExtent(0.5f), 1e-6f)
         assertEquals(1f, ThreeBand.highExtent(1f), 1e-6f)
@@ -18,13 +19,15 @@ class ThreeBandTest {
         assertEquals(1f, ThreeBand.highExtent(2f), 1e-6f)
     }
 
-    @Test fun lowAndMidAreLinear() {
+    @Test
+    fun lowAndMidAreLinear() {
         assertEquals(100f / 128f, ThreeBand.lowExtent(100f / 128f), 0f)
         assertEquals(60f / 128f, ThreeBand.midExtent(60f / 128f), 0f)
         assertEquals(1f, ThreeBand.lowExtent(1.5f), 0f)
     }
 
-    @Test fun regionsTakeTheColourOfTheBandsReachingThem() {
+    @Test
+    fun regionsTakeTheColourOfTheBandsReachingThem() {
         // Example 1 of the maths (PWV7 100, 60, 40): low longest, high shortest.
         val low = 100f / 128f
         val mid = 60f / 128f
@@ -44,7 +47,8 @@ class ThreeBandTest {
         assertEquals(WaveformCdjMidHi, ThreeBand.colours[7 xor (1 shl ThreeBand.shortest(lowB, midB, highB))])
     }
 
-    @Test fun tiesNeverPickTheSameBandAsLongestAndShortest() {
+    @Test
+    fun tiesNeverPickTheSameBandAsLongestAndShortest() {
         val values = floatArrayOf(0f, 0.3f, 0.6f)
         for (l in values) for (m in values) for (h in values) {
             assertNotEquals("l=$l m=$m h=$h", ThreeBand.longest(l, m, h), ThreeBand.shortest(l, m, h))

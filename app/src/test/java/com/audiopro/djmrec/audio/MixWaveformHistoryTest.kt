@@ -5,15 +5,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class MixWaveformHistoryTest {
-    private fun history(value: Float) = TrackWaveformHistory().apply {
-        accept(snapshot(512, value))
-    }
+    private fun history(value: Float) = TrackWaveformHistory().apply { accept(snapshot(512, value)) }
 
     private fun snapshot(cursor: Int, value: Float) =
-        FloatArray(TrackWaveformHistory.SNAPSHOT_FLOATS) { value }.also {
-            it[2048] = cursor.toFloat()
-            it[2049] = 6.125f
-        }
+        FloatArray(TrackWaveformHistory.SNAPSHOT_FLOATS) { value }
+            .also {
+                it[2048] = cursor.toFloat()
+                it[2049] = 6.125f
+            }
 
     @Test
     fun `changing a source redraws existing history without waiting for new audio`() {

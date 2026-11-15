@@ -8,10 +8,7 @@ import kotlin.test.assertTrue
 class MultitrackLayoutTest {
     @Test
     fun `wire channels split into stereo pairs with a trailing mono track`() {
-        assertEquals(
-            listOf(TrackChannels(0, 0, 2), TrackChannels(1, 2, 2), TrackChannels(2, 4, 1)),
-            MultitrackLayout.tracks(5)
-        )
+        assertEquals(listOf(TrackChannels(0, 0, 2), TrackChannels(1, 2, 2), TrackChannels(2, 4, 1)), MultitrackLayout.tracks(5))
         assertEquals(6, MultitrackLayout.tracks(12).size)
         assertEquals("USB 11/12", MultitrackLayout.tracks(12).last().usbLabel)
         assertEquals("USB 5", MultitrackLayout.tracks(5).last().usbLabel)
@@ -42,11 +39,18 @@ class MultitrackLayoutTest {
 
     @Test
     fun `native levels map to tracks and a mono track mirrors its channel`() {
-        val raw = floatArrayOf(
-            -6f, -12f, 0f, // ch1
-            -7f, -13f, 1f, // ch2 clipped
-            -20f, -30f, 0f // ch3
-        )
+        val raw =
+            floatArrayOf(
+                -6f,
+                -12f,
+                0f, // ch1
+                -7f,
+                -13f,
+                1f, // ch2 clipped
+                -20f,
+                -30f,
+                0f // ch3
+                )
         val levels = MultitrackLayout.trackLevels(raw, MultitrackLayout.tracks(3))
         assertEquals(ChannelLevel(-6f, -12f, false), levels[0].left)
         assertEquals(ChannelLevel(-7f, -13f, true), levels[0].right)

@@ -7,23 +7,18 @@ import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.RectF
-import android.net.Uri
 import android.graphics.SurfaceTexture
+import android.net.Uri
 import android.view.Surface
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
 import com.pedro.encoder.input.sources.video.VideoSource
 import kotlin.math.min
-import androidx.core.net.toUri
-import androidx.core.graphics.createBitmap
 
 /** User-selected still image source used when DJ only wants to broadcast mixer audio. */
-class ArtworkVideoSource(
-    private val context: Context,
-    artworkUri: String,
-    private val onFailure: (String) -> Unit
-) : VideoSource() {
+class ArtworkVideoSource(private val context: Context, artworkUri: String, private val onFailure: (String) -> Unit) : VideoSource() {
     private val artworkUri = artworkUri.toUri()
-    @Volatile
-    private var running = false
+    @Volatile private var running = false
     private var worker: Thread? = null
     private var surface: Surface? = null
     private var artwork: Bitmap? = null
@@ -46,34 +41,38 @@ class ArtworkVideoSource(
             return
         }
         running = true
-        worker = Thread({
-            val frameDelay = (1_000L / fps.coerceAtLeast(1)).coerceAtLeast(1)
-            var consecutiveFailures = 0
-            while (running) {
-                val target = surface
-                val frame = artwork
-                var canvas: Canvas? = null
-                try {
-                    canvas = target?.lockCanvas(null)
-                    if (canvas != null && frame != null) canvas.drawBitmap(frame, 0f, 0f, null)
-                    consecutiveFailures = 0
-                } catch (_: Exception) {
-                    consecutiveFailures++
-                } finally {
-                    if (canvas != null) runCatching { target?.unlockCanvasAndPost(canvas) }
-                }
-                if (consecutiveFailures >= 3) {
-                    running = false
-                    onFailure("Phone could not render livestream artwork")
-                    break
-                }
-                try {
-                    Thread.sleep(frameDelay)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                }
-            }
-        }, "DjmLiveArtwork").apply { start() }
+        worker =
+            Thread(
+                    {
+                        val frameDelay = (1_000L / fps.coerceAtLeast(1)).coerceAtLeast(1)
+                        var consecutiveFailures = 0
+                        while (running) {
+                            val target = surface
+                            val frame = artwork
+                            var canvas: Canvas? = null
+                            try {
+                                canvas = target?.lockCanvas(null)
+                                if (canvas != null && frame != null) canvas.drawBitmap(frame, 0f, 0f, null)
+                                consecutiveFailures = 0
+                            } catch (_: Exception) {
+                                consecutiveFailures++
+                            } finally {
+                                if (canvas != null) runCatching { target?.unlockCanvasAndPost(canvas) }
+                            }
+                            if (consecutiveFailures >= 3) {
+                                running = false
+                                onFailure("Phone could not render livestream artwork")
+                                break
+                            }
+                            try {
+                                Thread.sleep(frameDelay)
+                            } catch (_: InterruptedException) {
+                                Thread.currentThread().interrupt()
+                            }
+                        }
+                    },
+                    "DjmLiveArtwork")
+                .apply { start() }
     }
 
     override fun stop() {
@@ -96,12 +95,13 @@ class ArtworkVideoSource(
     private fun decodeArtwork(width: Int, height: Int): Bitmap {
         require(artworkUri != Uri.EMPTY) { "Artwork URI is missing" }
         val source = ImageDecoder.createSource(context.contentResolver, artworkUri)
-        val decoded = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            val longestSide = maxOf(info.size.width, info.size.height)
-            val targetLongestSide = maxOf(width, height) * 2
-            decoder.setTargetSampleSize((longestSide / targetLongestSide).coerceAtLeast(1))
-        }
+        val decoded =
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val longestSide = maxOf(info.size.width, info.size.height)
+                val targetLongestSide = maxOf(width, height) * 2
+                decoder.setTargetSampleSize((longestSide / targetLongestSide).coerceAtLeast(1))
+            }
         val rotated = frameRotation == 90 || frameRotation == 270
         // Compose the artwork upright on the OUTPUT frame viewers should see (letterboxed 16:9
         // landscape, or 9:16 portrait).
@@ -113,12 +113,8 @@ class ArtworkVideoSource(
         val scale = min(outputWidth.toFloat() / decoded.width, outputHeight.toFloat() / decoded.height)
         val drawnWidth = decoded.width * scale
         val drawnHeight = decoded.height * scale
-        val destination = RectF(
-            (outputWidth - drawnWidth) / 2f,
-            (outputHeight - drawnHeight) / 2f,
-            (outputWidth + drawnWidth) / 2f,
-            (outputHeight + drawnHeight) / 2f
-        )
+        val destination =
+            RectF((outputWidth - drawnWidth) / 2f, (outputHeight - drawnHeight) / 2f, (outputWidth + drawnWidth) / 2f, (outputHeight + drawnHeight) / 2f)
         canvas.drawBitmap(decoded, null, destination, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         decoded.recycle()
         if (!rotated) return output
@@ -130,11 +126,12 @@ class ArtworkVideoSource(
         val buffer = createBitmap(width, height)
         val bufferCanvas = Canvas(buffer)
         bufferCanvas.drawColor(Color.BLACK)
-        val matrix = android.graphics.Matrix().apply {
-            postTranslate(-outputWidth / 2f, -outputHeight / 2f)
-            postRotate(-frameRotation.toFloat())
-            postTranslate(width / 2f, height / 2f)
-        }
+        val matrix =
+            android.graphics.Matrix().apply {
+                postTranslate(-outputWidth / 2f, -outputHeight / 2f)
+                postRotate(-frameRotation.toFloat())
+                postTranslate(width / 2f, height / 2f)
+            }
         bufferCanvas.drawBitmap(output, matrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         output.recycle()
         return buffer

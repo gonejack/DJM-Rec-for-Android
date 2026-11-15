@@ -3,8 +3,8 @@ package com.audiopro.djmrec.audio
 import androidx.compose.runtime.Immutable
 
 /**
- * One multitrack track: [width] (1 or 2) wire channels starting at [firstChannel]. Mirrors the
- * native `TrackLayout`: consecutive stereo pairs, with a trailing odd channel as a mono track.
+ * One multitrack track: [width] (1 or 2) wire channels starting at [firstChannel]. Mirrors the native `TrackLayout`: consecutive stereo pairs, with a trailing
+ * odd channel as a mono track.
  */
 @Immutable
 data class TrackChannels(val index: Int, val firstChannel: Int, val width: Int) {
@@ -20,21 +20,18 @@ object MultitrackLayout {
 
     fun tracks(channelCount: Int): List<TrackChannels> {
         val channels = channelCount.coerceIn(0, MAX_CHANNELS)
-        return (0 until channels step 2).take(MAX_TRACKS).mapIndexed { index, first ->
-            TrackChannels(index, first, minOf(2, channels - first))
-        }
+        return (0 until channels step 2).take(MAX_TRACKS).mapIndexed { index, first -> TrackChannels(index, first, minOf(2, channels - first)) }
     }
 
     /** Multitrack needs more than the master pair; a stereo device has nothing extra to record. */
     fun isAvailable(channelCount: Int): Boolean = channelCount > 2
 
     /** Track whose channels hold the master pair starting at [masterOffset], or -1. */
-    fun masterTrack(masterOffset: Int, tracks: List<TrackChannels>): Int =
-        if (masterOffset < 0) -1 else tracks.indexOfFirst { it.firstChannel == masterOffset }
+    fun masterTrack(masterOffset: Int, tracks: List<TrackChannels>): Int = if (masterOffset < 0) -1 else tracks.indexOfFirst { it.firstChannel == masterOffset }
 
     /**
-     * Native levels are three floats per wire channel (peak dBFS, RMS dBFS, clip flag). Returns
-     * one [StereoLevels] per track; a mono track reports the same reading on both sides.
+     * Native levels are three floats per wire channel (peak dBFS, RMS dBFS, clip flag). Returns one [StereoLevels] per track; a mono track reports the same
+     * reading on both sides.
      */
     fun trackLevels(raw: FloatArray, tracks: List<TrackChannels>): List<StereoLevels> {
         fun channel(index: Int): ChannelLevel {
@@ -49,26 +46,21 @@ object MultitrackLayout {
     }
 
     /** Free-space need of the master plus armed tracks, in bytes per second. */
-    fun bytesPerSecond(
-        sampleRate: Int,
-        bitDepth: Int,
-        masterChannels: Int,
-        armedTracks: List<TrackChannels>
-    ): Long {
+    fun bytesPerSecond(sampleRate: Int, bitDepth: Int, masterChannels: Int, armedTracks: List<TrackChannels>): Long {
         val bytesPerSample = (bitDepth.coerceAtLeast(8) + 7) / 8
         val channels = masterChannels + armedTracks.sumOf { it.width }
         return sampleRate.coerceAtLeast(1).toLong() * channels * bytesPerSample
     }
 }
 
-/**
- * Tracks to record next to the master: native track indices and the label each file gets.
- * Passed from the UI to the service with ACTION_START.
- */
+/** Tracks to record next to the master: native track indices and the label each file gets. Passed from the UI to the service with ACTION_START. */
 data class TrackRecordingPlan(val tracks: List<Int>, val labels: List<String>) {
-    init { require(tracks.size == labels.size) }
+    init {
+        require(tracks.size == labels.size)
+    }
 
-    val isEmpty: Boolean get() = tracks.isEmpty()
+    val isEmpty: Boolean
+        get() = tracks.isEmpty()
 
     companion object {
         val NONE = TrackRecordingPlan(emptyList(), emptyList())

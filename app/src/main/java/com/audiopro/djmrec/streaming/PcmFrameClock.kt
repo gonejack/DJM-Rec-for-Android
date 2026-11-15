@@ -4,7 +4,10 @@ package com.audiopro.djmrec.streaming
 internal class PcmFrameClock(private val sampleRate: Int, channelCount: Int = 2) {
     private val bytesPerFrame = channelCount * 2
 
-    init { require(sampleRate > 0 && channelCount in 1..2) }
+    init {
+        require(sampleRate > 0 && channelCount in 1..2)
+    }
+
     private var origin: Long? = null
     private var frames = 0L
 

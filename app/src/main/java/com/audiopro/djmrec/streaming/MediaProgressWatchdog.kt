@@ -4,10 +4,12 @@ package com.audiopro.djmrec.streaming
 internal class MediaProgressWatchdog {
     private val counts = LongArray(3)
     private val advancedAt = LongArray(3)
+
     fun reset(now: Long) {
         counts.fill(0)
         advancedAt.fill(now)
     }
+
     fun failure(now: Long, pcm: Long, audio: Long, video: Long): String? {
         val current = longArrayOf(pcm, audio, video)
         for (i in current.indices) {

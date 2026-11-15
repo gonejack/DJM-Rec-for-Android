@@ -6,19 +6,19 @@ import kotlin.math.pow
 interface WaveformHistory {
     val capacity: Int
     val size: Int
+
     fun value(index: Int, band: Int): Float
 }
 
 /**
- * One side of the monitoring Mix, including history captured before its route changed.
- * The source is an individual channel after Track gain; null represents None.
+ * One side of the monitoring Mix, including history captured before its route changed. The source is an individual channel after Track gain; null represents
+ * None.
  */
-class MixWaveformHistory(
-    private val source: TrackWaveformHistory?,
-    gainDb: Float = 0f
-) : WaveformHistory {
+class MixWaveformHistory(private val source: TrackWaveformHistory?, gainDb: Float = 0f) : WaveformHistory {
     override val capacity: Int = source?.capacity ?: 640
-    override val size: Int get() = source?.size ?: 0
+    override val size: Int
+        get() = source?.size ?: 0
+
     private val gain = 10f.pow(gainDb / 20f)
 
     override fun value(index: Int, band: Int): Float {

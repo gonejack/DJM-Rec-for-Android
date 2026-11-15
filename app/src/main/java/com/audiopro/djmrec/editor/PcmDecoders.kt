@@ -30,12 +30,9 @@ internal object PcmDecoders {
         if (!extension.equals("wav", ignoreCase = true)) {
             return MediaCodecPcmDecoder(context, uri, if (extension.equals("mp3", ignoreCase = true)) 16 else 24)
         }
-        val descriptor: ParcelFileDescriptor =
-            context.contentResolver.openFileDescriptor(uri, "r") ?: throw IOException("Cannot open recording")
+        val descriptor: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: throw IOException("Cannot open recording")
         return try {
-            WavPcmDecoder(BufferedInputStream(FileInputStream(descriptor.fileDescriptor), 1 shl 16)) {
-                runCatching { descriptor.close() }
-            }
+            WavPcmDecoder(BufferedInputStream(FileInputStream(descriptor.fileDescriptor), 1 shl 16)) { runCatching { descriptor.close() } }
         } catch (error: Throwable) {
             runCatching { descriptor.close() }
             throw error
@@ -44,16 +41,14 @@ internal object PcmDecoders {
 }
 
 /** Reads PCM WAV (integer 8-32 bit, float 32, extensible), including unfinished headers. */
-internal class WavPcmDecoder(
-    private val input: InputStream,
-    private val onClose: () -> Unit = {}
-) : PcmDecoder {
-    private val header: WavHeader = try {
-        parseHeader()
-    } catch (error: Throwable) {
-        close()
-        throw error
-    }
+internal class WavPcmDecoder(private val input: InputStream, private val onClose: () -> Unit = {}) : PcmDecoder {
+    private val header: WavHeader =
+        try {
+            parseHeader()
+        } catch (error: Throwable) {
+            close()
+            throw error
+        }
     override val sampleRate: Int = header.sampleRate
     override val channels: Int = header.channels
     override val bitsPerSample: Int = header.bits
@@ -117,14 +112,15 @@ internal class WavPcmDecoder(
         return frames
     }
 
-    private fun sample(offset: Int): Double = when {
-        isFloat -> Float.fromBits(u32(bytes, offset).toInt()).toDouble()
-        bytesPerSample == 1 -> ((bytes[offset].toInt() and 0xFF) - 128) / 128.0
-        bytesPerSample == 2 -> ((bytes[offset].toInt() and 0xFF) or (bytes[offset + 1].toInt() shl 8)).toShort() / 32768.0
-        bytesPerSample == 3 -> ((bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
-            (bytes[offset + 2].toInt() shl 16)) / 8388608.0
-        else -> u32(bytes, offset).toInt() / 2147483648.0
-    }
+    private fun sample(offset: Int): Double =
+        when {
+            isFloat -> Float.fromBits(u32(bytes, offset).toInt()).toDouble()
+            bytesPerSample == 1 -> ((bytes[offset].toInt() and 0xFF) - 128) / 128.0
+            bytesPerSample == 2 -> ((bytes[offset].toInt() and 0xFF) or (bytes[offset + 1].toInt() shl 8)).toShort() / 32768.0
+            bytesPerSample == 3 ->
+                ((bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8) or (bytes[offset + 2].toInt() shl 16)) / 8388608.0
+            else -> u32(bytes, offset).toInt() / 2147483648.0
+        }
 
     private fun readBytes(count: Int): ByteArray {
         val result = ByteArray(count)
@@ -138,13 +134,17 @@ internal class WavPcmDecoder(
     }
 
     private fun readTag(): String = String(readBytes(4), Charsets.US_ASCII)
+
     private fun readUInt32(): Long = u32(readBytes(4), 0)
 
     private fun InputStream.skipFully(count: Long) {
         var left = count
         while (left > 0) {
             val skipped = skip(left)
-            if (skipped <= 0) { if (read() < 0) throw IOException("Truncated WAV"); left-- } else left -= skipped
+            if (skipped <= 0) {
+                if (read() < 0) throw IOException("Truncated WAV")
+                left--
+            } else left -= skipped
         }
     }
 
@@ -155,6 +155,7 @@ internal class WavPcmDecoder(
 
     private companion object {
         fun u16(data: ByteArray, offset: Int): Int = (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
+
         fun u32(data: ByteArray, offset: Int): Long = (u16(data, offset).toLong()) or (u16(data, offset + 2).toLong() shl 16)
     }
 }
@@ -164,14 +165,17 @@ internal class MediaCodecPcmDecoder(context: Context, uri: Uri, override val bit
     private val extractor = MediaExtractor()
     override var sampleRate: Int = 0
         private set
+
     override var channels: Int = 0
         private set
-    private val codec: MediaCodec = try {
-        startDecoder(context, uri)
-    } catch (error: Throwable) {
-        runCatching { extractor.release() }
-        throw error
-    }
+
+    private val codec: MediaCodec =
+        try {
+            startDecoder(context, uri)
+        } catch (error: Throwable) {
+            runCatching { extractor.release() }
+            throw error
+        }
     private var floatOutput = false
     private var inputDone = false
     private var outputDone = false
@@ -182,9 +186,9 @@ internal class MediaCodecPcmDecoder(context: Context, uri: Uri, override val bit
 
     private fun startDecoder(context: Context, uri: Uri): MediaCodec {
         extractor.setDataSource(context, uri, null)
-        val track = (0 until extractor.trackCount).firstOrNull {
-            extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
-        } ?: throw IOException("No audio track")
+        val track =
+            (0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+                ?: throw IOException("No audio track")
         extractor.selectTrack(track)
         val format = extractor.getTrackFormat(track)
         sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
@@ -233,8 +237,8 @@ internal class MediaCodecPcmDecoder(context: Context, uri: Uri, override val bit
                 val format = codec.outputFormat
                 sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-                floatOutput = format.containsKey(MediaFormat.KEY_PCM_ENCODING) &&
-                    format.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
+                floatOutput =
+                    format.containsKey(MediaFormat.KEY_PCM_ENCODING) && format.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
             }
             outputIndex >= 0 -> {
                 val buffer = codec.getOutputBuffer(outputIndex)!!.order(ByteOrder.LITTLE_ENDIAN)

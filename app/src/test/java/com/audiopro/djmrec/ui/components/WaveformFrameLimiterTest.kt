@@ -1,9 +1,11 @@
 package com.audiopro.djmrec.ui.components
+
 import org.junit.Assert.*
 import org.junit.Test
 
 class WaveformFrameLimiterTest {
-    @Test fun capsDrawsAcrossRefreshRates() {
+    @Test
+    fun capsDrawsAcrossRefreshRates() {
         for (refresh in listOf(60, 90, 120, 144)) {
             val limiter = WaveformFrameLimiter()
             var draws = 0

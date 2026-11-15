@@ -64,8 +64,7 @@ class EditProcessorTest {
         val rate = 8_000
         val frames = rate * 4
         val source = sine(rate, 4.0, 0.9, hz = 200.0)
-        val processor = EditProcessor(rate, 2,
-            EditSettings(fadeInMillis = 1_000, fadeOutMillis = 500), gainDb = 12.0, sourceFrames = frames.toLong())
+        val processor = EditProcessor(rate, 2, EditSettings(fadeInMillis = 1_000, fadeOutMillis = 500), gainDb = 12.0, sourceFrames = frames.toLong())
         val out = mutableListOf<Double>()
         val collect: (DoubleArray, Int) -> Unit = { buffer, count -> for (i in 0 until count * 2) out += buffer[i] }
         processor.process(source, frames, collect)

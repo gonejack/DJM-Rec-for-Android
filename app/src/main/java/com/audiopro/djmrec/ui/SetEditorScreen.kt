@@ -70,13 +70,13 @@ import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextSecondary
-import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 
 /** Loudness targets offered by the editor, with where they fit. */
 private enum class LoudnessTarget(val lufs: Double?, val label: String, val hint: String) {
@@ -87,8 +87,8 @@ private enum class LoudnessTarget(val lufs: Double?, val label: String, val hint
 }
 
 /**
- * Post-set editor: trim, fades, loudness normalization and export to MP3/WAV/FLAC. Writes a
- * new "(edit)" file in Music/DJMRec; the original recording is never changed.
+ * Post-set editor: trim, fades, loudness normalization and export to MP3/WAV/FLAC. Writes a new "(edit)" file in Music/DJMRec; the original recording is never
+ * changed.
  */
 @Composable
 fun SetEditorDialog(recording: LibraryRecording, onClose: () -> Unit) {
@@ -98,56 +98,54 @@ fun SetEditorDialog(recording: LibraryRecording, onClose: () -> Unit) {
         SetEditor.close()
         onClose()
     }
-    Dialog(onDismissRequest = { if (SetEditor.state.value !is EditorState.Exporting) close() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = BackgroundDark) {
-            val state by SetEditor.state.collectAsState()
-            Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = close, enabled = state !is EditorState.Exporting) {
-                        Icon(Icons.Default.Close, "Close editor")
+    Dialog(
+        onDismissRequest = { if (SetEditor.state.value !is EditorState.Exporting) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = BackgroundDark) {
+                val state by SetEditor.state.collectAsState()
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = close, enabled = state !is EditorState.Exporting) { Icon(Icons.Default.Close, "Close editor") }
+                        Column(Modifier.weight(1f)) {
+                            Text("Edit set", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                recording.displayName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                        }
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text("Edit set", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(recording.displayName, style = MaterialTheme.typography.bodySmall, color = TextSecondary,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    when (val current = state) {
+                        is EditorState.Analyzing -> AnalyzingPane(current.progress)
+                        is EditorState.Failed ->
+                            if (current.analysis == null) {
+                                MessagePane(current.message, action = "Close", onAction = close)
+                            } else {
+                                EditorPane(current.analysis, state, onClose = close)
+                            }
+                        is EditorState.Ready -> EditorPane(current.analysis, state, onClose = close)
+                        is EditorState.Exporting -> EditorPane(current.analysis, state, onClose = close)
+                        is EditorState.Exported -> EditorPane(current.analysis, state, onClose = close)
+                        EditorState.Idle -> AnalyzingPane(0f)
                     }
-                }
-                when (val current = state) {
-                    is EditorState.Analyzing -> AnalyzingPane(current.progress)
-                    is EditorState.Failed -> if (current.analysis == null) {
-                        MessagePane(current.message, action = "Close", onAction = close)
-                    } else {
-                        EditorPane(current.analysis, state, onClose = close)
-                    }
-                    is EditorState.Ready -> EditorPane(current.analysis, state, onClose = close)
-                    is EditorState.Exporting -> EditorPane(current.analysis, state, onClose = close)
-                    is EditorState.Exported -> EditorPane(current.analysis, state, onClose = close)
-                    EditorState.Idle -> AnalyzingPane(0f)
                 }
             }
         }
-    }
 }
 
 @Composable
 private fun AnalyzingPane(progress: Float) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Reading your set", style = MaterialTheme.typography.titleMedium)
-        Text("Measuring loudness and drawing the waveform. Long sets take a minute.",
-            style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        Text("Measuring loudness and drawing the waveform. Long sets take a minute.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
-        Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary,
-            modifier = Modifier.padding(top = 8.dp))
+        Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
 @Composable
 private fun MessagePane(message: String, action: String, onAction: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(message, style = MaterialTheme.typography.bodyLarge)
         Button(onClick = onAction, modifier = Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(action) }
     }
@@ -166,26 +164,25 @@ private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: ()
     val exporting = state is EditorState.Exporting
     val keptMillis = (trimEnd - trimStart).roundToLong()
     // Loudness of the kept range comes from the analysis pass, so this is instant.
-    val measured = remember(analysis, trimStart.roundToLong() / 1000, trimEnd.roundToLong() / 1000) {
-        analysis.loudnessLufs(trimStart.roundToLong(), trimEnd.roundToLong())
-    }
+    val measured =
+        remember(analysis, trimStart.roundToLong() / 1000, trimEnd.roundToLong() / 1000) {
+            analysis.loudnessLufs(trimStart.roundToLong(), trimEnd.roundToLong())
+        }
     val gainDb = EditMath.normalizationGainDb(measured, target.lufs)
-    val settings = EditSettings(
-        trimStartMillis = trimStart.roundToLong(),
-        trimEndMillis = trimEnd.roundToLong(),
-        fadeInMillis = fadeIn.roundToLong(),
-        fadeOutMillis = fadeOut.roundToLong(),
-        targetLufs = target.lufs,
-        format = format
-    )
+    val settings =
+        EditSettings(
+            trimStartMillis = trimStart.roundToLong(),
+            trimEndMillis = trimEnd.roundToLong(),
+            fadeInMillis = fadeIn.roundToLong(),
+            fadeOutMillis = fadeOut.roundToLong(),
+            targetLufs = target.lufs,
+            format = format)
     val preview = rememberPreviewPlayer(analysis.recording)
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             EditorSection("Trim") {
-                OverviewWaveform(analysis, trimStart / duration, trimEnd / duration,
-                    fadeIn / duration, fadeOut / duration)
+                OverviewWaveform(analysis, trimStart / duration, trimEnd / duration, fadeIn / duration, fadeOut / duration)
                 RangeSlider(
                     value = trimStart..trimEnd,
                     onValueChange = { range ->
@@ -194,8 +191,7 @@ private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: ()
                     },
                     valueRange = 0f..duration,
                     enabled = !exporting,
-                    modifier = Modifier.semantics { contentDescription = "Start and end of the kept part" }
-                )
+                    modifier = Modifier.semantics { contentDescription = "Start and end of the kept part" })
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TimeLabel("Start", trimStart.roundToLong())
                     TimeLabel("Length", keptMillis)
@@ -210,8 +206,7 @@ private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: ()
                         preview.toggle(PreviewFrom.END, max(trimStart.roundToLong(), end - PREVIEW_MILLIS), end)
                     }
                 }
-                Text("Previews play the original; fades and level apply to the export.",
-                    style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text("Previews play the original; fades and level apply to the export.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             EditorSection("Fades") {
                 val maxFadeIn = min(10_000f, keptMillis / 2f)
@@ -223,30 +218,27 @@ private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: ()
                 Text(
                     measured?.let { String.format(Locale.US, "Selection: %.1f LUFS · peak %.1f dBFS", it, peakDb(analysis.samplePeak)) }
                         ?: "Selection is silent",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                    style = MaterialTheme.typography.bodyMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     LoudnessTarget.entries.forEach { option ->
-                        FilterChip(selected = target == option, onClick = { target = option }, enabled = !exporting,
-                            label = { Text(option.label) })
+                        FilterChip(selected = target == option, onClick = { target = option }, enabled = !exporting, label = { Text(option.label) })
                     }
                 }
                 Text(target.hint, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                 if (target.lufs != null && measured != null) {
-                    Text(String.format(Locale.US, "Level change: %+.1f dB", gainDb),
-                        style = MaterialTheme.typography.bodyMedium, color = AccentGreen)
+                    Text(String.format(Locale.US, "Level change: %+.1f dB", gainDb), style = MaterialTheme.typography.bodyMedium, color = AccentGreen)
                 }
             }
             EditorSection("Save as") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(RecordingFormat.MP3 to "MP3 320 kbps", RecordingFormat.WAV to "WAV", RecordingFormat.FLAC to "FLAC")
-                        .forEach { (option, label) ->
-                            FilterChip(selected = format == option, onClick = { format = option }, enabled = !exporting,
-                                label = { Text(label) })
-                        }
+                    listOf(RecordingFormat.MP3 to "MP3 320 kbps", RecordingFormat.WAV to "WAV", RecordingFormat.FLAC to "FLAC").forEach { (option, label) ->
+                        FilterChip(selected = format == option, onClick = { format = option }, enabled = !exporting, label = { Text(label) })
+                    }
                 }
-                Text("${SetEditor.editedName(analysis.recording.title, format)} in Music/DJMRec. The original stays untouched.",
-                    style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text(
+                    "${SetEditor.editedName(analysis.recording.title, format)} in Music/DJMRec. The original stays untouched.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary)
             }
         }
         Surface(color = SurfaceDark, shadowElevation = 8.dp) {
@@ -255,27 +247,28 @@ private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: ()
                     is EditorState.Exporting -> {
                         Text("Exporting ${(state.progress * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
                         LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
-                        OutlinedButton(onClick = SetEditor::cancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("Cancel export")
-                        }
+                        OutlinedButton(onClick = SetEditor::cancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel export") }
                     }
                     is EditorState.Exported -> {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Default.CheckCircle, null, tint = AccentGreen)
-                            Text("Saved ${state.displayName}", style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text("Saved ${state.displayName}", style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = {
-                                val share = Intent(Intent.ACTION_SEND).apply {
-                                    type = mimeFor(state.displayName)
-                                    putExtra(Intent.EXTRA_STREAM, state.uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            OutlinedButton(
+                                onClick = {
+                                    val share =
+                                        Intent(Intent.ACTION_SEND).apply {
+                                            type = mimeFor(state.displayName)
+                                            putExtra(Intent.EXTRA_STREAM, state.uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                    runCatching { context.startActivity(Intent.createChooser(share, "Share edited set")) }
+                                },
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                                    Icon(Icons.Default.Share, null)
+                                    Text(" Share")
                                 }
-                                runCatching { context.startActivity(Intent.createChooser(share, "Share edited set")) }
-                            }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                                Icon(Icons.Default.Share, null); Text(" Share")
-                            }
                             Button(onClick = onClose, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Done") }
                         }
                         TextButton(onClick = SetEditor::backToEditing) { Text("Make another version") }
@@ -285,10 +278,14 @@ private fun EditorPane(analysis: EditorAnalysis, state: EditorState, onClose: ()
                             Text(state.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         }
                         Button(
-                            onClick = { preview.stop(); SetEditor.export(context, analysis, settings) },
+                            onClick = {
+                                preview.stop()
+                                SetEditor.export(context, analysis, settings)
+                            },
                             enabled = keptMillis >= 1000,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                        ) { Text("Export ${format.name}") }
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                                Text("Export ${format.name}")
+                            }
                     }
                 }
             }
@@ -315,15 +312,19 @@ private fun TimeLabel(label: String, millis: Long) {
 }
 
 @Composable
-private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, enabled: Boolean,
-                      onChange: (Float) -> Unit) {
+private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, enabled: Boolean, onChange: (Float) -> Unit) {
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text(if (value < 50f) "Off" else String.format(Locale.US, "%.1f s", value / 1000f),
-                style = MaterialTheme.typography.labelLarge, fontFamily = FontFamily.Monospace)
+            Text(
+                if (value < 50f) "Off" else String.format(Locale.US, "%.1f s", value / 1000f),
+                style = MaterialTheme.typography.labelLarge,
+                fontFamily = FontFamily.Monospace)
         }
-        Slider(value, onChange, enabled = enabled && range.endInclusive > 0f,
+        Slider(
+            value,
+            onChange,
+            enabled = enabled && range.endInclusive > 0f,
             valueRange = 0f..max(range.endInclusive, 1f),
             modifier = Modifier.semantics { contentDescription = "$label length" })
     }
@@ -338,38 +339,39 @@ private fun PreviewButton(label: String, playing: Boolean, modifier: Modifier, o
 }
 
 /**
- * Overview of the whole set: bars outside the kept range are dimmed, and the fade ramps are
- * drawn into the bar heights so the result is visible before exporting.
+ * Overview of the whole set: bars outside the kept range are dimmed, and the fade ramps are drawn into the bar heights so the result is visible before
+ * exporting.
  */
 @Composable
 private fun OverviewWaveform(analysis: EditorAnalysis, start: Float, end: Float, fadeIn: Float, fadeOut: Float) {
     val bars = remember(analysis) { overviewBars(analysis.hopPeaks, OVERVIEW_BARS) }
     val dim = TextSecondary.copy(alpha = 0.35f)
     Canvas(
-        Modifier.fillMaxWidth().height(96.dp)
-            .background(BackgroundDark, RoundedCornerShape(12.dp))
-            .semantics { contentDescription = "Waveform overview of the set" }
-    ) {
-        val slot = size.width / bars.size
-        val barWidth = max(1f, slot * 0.7f)
-        bars.forEachIndexed { index, peak ->
-            val position = (index + 0.5f) / bars.size
-            val inside = position in start..end
-            var factor = 1f
-            if (inside && fadeIn > 0f && position < start + fadeIn) factor = (position - start) / fadeIn
-            if (inside && fadeOut > 0f && position > end - fadeOut) factor = min(factor, (end - position) / fadeOut)
-            val height = max(2f, peak * factor.coerceIn(0f, 1f) * size.height * 0.9f)
-            drawRoundRect(
-                color = if (inside) AccentGreen else dim,
-                topLeft = Offset(index * slot, (size.height - height) / 2f),
-                size = Size(barWidth, height),
-                cornerRadius = CornerRadius(barWidth / 2f)
-            )
+        Modifier.fillMaxWidth().height(96.dp).background(BackgroundDark, RoundedCornerShape(12.dp)).semantics {
+            contentDescription = "Waveform overview of the set"
+        }) {
+            val slot = size.width / bars.size
+            val barWidth = max(1f, slot * 0.7f)
+            bars.forEachIndexed { index, peak ->
+                val position = (index + 0.5f) / bars.size
+                val inside = position in start..end
+                var factor = 1f
+                if (inside && fadeIn > 0f && position < start + fadeIn) factor = (position - start) / fadeIn
+                if (inside && fadeOut > 0f && position > end - fadeOut) factor = min(factor, (end - position) / fadeOut)
+                val height = max(2f, peak * factor.coerceIn(0f, 1f) * size.height * 0.9f)
+                drawRoundRect(
+                    color = if (inside) AccentGreen else dim,
+                    topLeft = Offset(index * slot, (size.height - height) / 2f),
+                    size = Size(barWidth, height),
+                    cornerRadius = CornerRadius(barWidth / 2f))
+            }
         }
-    }
 }
 
-private enum class PreviewFrom { START, END }
+private enum class PreviewFrom {
+    START,
+    END
+}
 
 /** Plays a few seconds of the original around the trim points. Main thread only. */
 private class PreviewPlayer(val player: MediaPlayer) {
@@ -378,7 +380,10 @@ private class PreviewPlayer(val player: MediaPlayer) {
     var ready = false
 
     fun toggle(from: PreviewFrom, startMillis: Long, endMillis: Long) {
-        if (playingFrom == from) { stop(); return }
+        if (playingFrom == from) {
+            stop()
+            return
+        }
         if (!ready) return
         runCatching {
             player.seekTo(startMillis, MediaPlayer.SEEK_CLOSEST)
@@ -402,7 +407,10 @@ private fun rememberPreviewPlayer(recording: LibraryRecording): PreviewPlayer {
         val player = preview.player
         player.setOnPreparedListener { preview.ready = true }
         player.setOnCompletionListener { preview.playingFrom = null }
-        runCatching { player.setDataSource(context, recording.uri); player.prepareAsync() }
+        runCatching {
+            player.setDataSource(context, recording.uri)
+            player.prepareAsync()
+        }
         onDispose { runCatching { player.release() } }
     }
     val playingFrom = preview.playingFrom
@@ -433,8 +441,9 @@ internal fun overviewBars(hopPeaks: FloatArray, count: Int): FloatArray {
 
 private fun peakDb(peak: Double): Double = if (peak <= 0.0) -120.0 else 20.0 * log10(peak)
 
-private fun mimeFor(fileName: String): String = when (fileName.substringAfterLast('.').lowercase()) {
-    "wav" -> "audio/wav"
-    "flac" -> "audio/flac"
-    else -> "audio/mpeg"
-}
+private fun mimeFor(fileName: String): String =
+    when (fileName.substringAfterLast('.').lowercase()) {
+        "wav" -> "audio/wav"
+        "flac" -> "audio/flac"
+        else -> "audio/mpeg"
+    }

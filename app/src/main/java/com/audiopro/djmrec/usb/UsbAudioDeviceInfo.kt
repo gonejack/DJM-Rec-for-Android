@@ -2,9 +2,8 @@ package com.audiopro.djmrec.usb
 
 /**
  * Immutable snapshot of a detected UAC2 mixer, combining:
- *  - USB descriptor facts (parsed directly from the device, always accurate to what the
- *    hardware advertises), and
- *  - The AAudio/AudioManager device id that the native engine binds to for actual capture.
+ * - USB descriptor facts (parsed directly from the device, always accurate to what the hardware advertises), and
+ * - The AAudio/AudioManager device id that the native engine binds to for actual capture.
  */
 data class UsbAudioDeviceInfo(
     val deviceName: String,
@@ -43,50 +42,52 @@ data class UsbAudioDeviceInfo(
     val selectedInterfaceNumbers: List<Int> = listOf(streamingInterfaceNumber)
 ) {
     val preferredSampleRate: Int
-        get() = negotiatedSampleRate.takeIf { it > 0 }
-            ?: supportedSampleRates.firstOrNull { it == 48_000 }
-            ?: supportedSampleRates.firstOrNull { it > 0 }
-            ?: 48_000
+        get() =
+            negotiatedSampleRate.takeIf { it > 0 } ?: supportedSampleRates.firstOrNull { it == 48_000 } ?: supportedSampleRates.firstOrNull { it > 0 } ?: 48_000
 
     /** Proprietary routing profile, or null for generic USB Audio devices. */
     val pioneerMixerProfile: PioneerMixerProfile?
         get() = PioneerMixerProfile.find(vendorId, productId)
 
-    val allInOneProfile: AllInOneProfile? get() = AllInOneProfile.find(vendorId, productId)
-    val profileDescription: String get() = when {
-        pioneerMixerProfile?.isHardwareConfirmed == true -> "Hardware confirmed"
-        pioneerMixerProfile != null -> "Driver profile · validation pending"
-        allInOneProfile != null -> "${allInOneProfile!!.displayName} · USB descriptor profile"
-        else -> "Automatic USB PCM profile"
-    }
+    val allInOneProfile: AllInOneProfile?
+        get() = AllInOneProfile.find(vendorId, productId)
+
+    val profileDescription: String
+        get() =
+            when {
+                pioneerMixerProfile?.isHardwareConfirmed == true -> "Hardware confirmed"
+                pioneerMixerProfile != null -> "Driver profile · validation pending"
+                allInOneProfile != null -> "${allInOneProfile!!.displayName} · USB descriptor profile"
+                else -> "Automatic USB PCM profile"
+            }
 
     /**
-     * Whether this device should be captured via the raw libusb isochronous path
-     * ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) rather than AAudio. Multichannel
-     * inputs need explicit pair extraction; recognized all-in-ones use their master return.
-     * Unrouted standard PCM inputs can also use raw capture. All require a supported format
-     * and a usable endpoint packet size.
+     * Whether this device should be captured via the raw libusb isochronous path ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) rather than AAudio.
+     * Multichannel inputs need explicit pair extraction; recognized all-in-ones use their master return. Unrouted standard PCM inputs can also use raw capture.
+     * All require a supported format and a usable endpoint packet size.
      */
-    val requiresExplicitInterfaceSelection: Boolean get() = captureInputs.size > 1
+    val requiresExplicitInterfaceSelection: Boolean
+        get() = captureInputs.size > 1
 
     /** CB5 exposes independent stereo interfaces, all recorded through the same track bus. */
     val recordsSelectedInputs: Boolean
         get() = vendorId == 0x0BDA && productId == 0x4F26 && requiresExplicitInterfaceSelection
 
     val captureLabel: String
-        get() = if (requiresExplicitInterfaceSelection) {
-            "$productName · ${selectedInterfaceNumbers.size}/${captureInputs.size}"
-        } else productName
+        get() =
+            if (requiresExplicitInterfaceSelection) {
+                "$productName · ${selectedInterfaceNumbers.size}/${captureInputs.size}"
+            } else productName
 
     /** Android's device id cannot identify an interface within a multi-input USB device. */
-    fun useAndroidCapture(forceAndroidCapture: Boolean): Boolean =
-        requiresIsoCapture && forceAndroidCapture && !requiresExplicitInterfaceSelection
+    fun useAndroidCapture(forceAndroidCapture: Boolean): Boolean = requiresIsoCapture && forceAndroidCapture && !requiresExplicitInterfaceSelection
 
     val requiresIsoCapture: Boolean
-        get() = requiresExplicitInterfaceSelection || (isochronousInMaxPacketSize > 0 &&
-            CaptureFormatPolicy.isSupported(channelCount, subframeSize, bitResolution) &&
-            ((pioneerMixerProfile != null && channelCount > 2) || allInOneProfile != null ||
-                channelCount > 2 || audioManagerDeviceId < 0))
+        get() =
+            requiresExplicitInterfaceSelection ||
+                (isochronousInMaxPacketSize > 0 &&
+                    CaptureFormatPolicy.isSupported(channelCount, subframeSize, bitResolution) &&
+                    ((pioneerMixerProfile != null && channelCount > 2) || allInOneProfile != null || channelCount > 2 || audioManagerDeviceId < 0))
 }
 
 /** Raw result of walking a single USB Audio Streaming interface's descriptor block. */
@@ -105,13 +106,11 @@ data class AudioStreamingInterfaceInfo(
 )
 
 /**
- * Everything the native libusb raw-isochronous capture path
- * ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) needs, bundled together by
+ * Everything the native libusb raw-isochronous capture path ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) needs, bundled together by
  * [UsbAudioManager.openIsoCaptureHandles].
  */
 data class UsbIsoCaptureHandle(
-    /** `UsbDeviceConnection.getFileDescriptor()` -- the connection producing this fd must stay
-     *  open for the lifetime of native capture. */
+    /** `UsbDeviceConnection.getFileDescriptor()` -- the connection producing this fd must stay open for the lifetime of native capture. */
     val fd: Int,
     val interfaceNumber: Int,
     val alternateSetting: Int,

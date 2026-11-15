@@ -14,15 +14,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.ui.unit.IntOffset
 
 /**
- * Shared motion tokens. Durations are chosen per distance and complexity (skill rules:
- * duration-timing / motion-consistency): micro feedback is instant-feeling, container
- * replacement is brief, and exits run ~60% of entrances so leaving always feels responsive
- * (exit-faster-than-enter). Slides arrive on springs -- natural deceleration and inherently
- * interruptible/cancellable (spring-physics, interruptible, cancellable-state-transitions);
- * nothing here blocks input, and every fade completes fully (opacity-threshold).
+ * Shared motion tokens. Durations are chosen per distance and complexity (skill rules: duration-timing / motion-consistency): micro feedback is
+ * instant-feeling, container replacement is brief, and exits run ~60% of entrances so leaving always feels responsive (exit-faster-than-enter). Slides arrive
+ * on springs -- natural deceleration and inherently interruptible/cancellable (spring-physics, interruptible, cancellable-state-transitions); nothing here
+ * blocks input, and every fade completes fully (opacity-threshold).
  *
- * All builders take `reduced` so callers can collapse to a brief crossfade when the user
- * has animations disabled ([rememberReducedMotion]).
+ * All builders take `reduced` so callers can collapse to a brief crossfade when the user has animations disabled ([rememberReducedMotion]).
  */
 object DjmRecMotion {
 
@@ -38,27 +35,26 @@ object DjmRecMotion {
     private val arrive = spring<IntOffset>(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
 
     /**
-     * Page/step replacement with directional continuity (navigation-direction): forward
-     * enters a quarter-slide from the right (or below when [vertical]), backward mirrors it.
-     * The quarter distance keeps it modern and subtle rather than a full-screen carousel.
+     * Page/step replacement with directional continuity (navigation-direction): forward enters a quarter-slide from the right (or below when [vertical]),
+     * backward mirrors it. The quarter distance keeps it modern and subtle rather than a full-screen carousel.
      */
-    fun pageTransform(
-        forward: Boolean,
-        vertical: Boolean = false,
-        reduced: Boolean = false
-    ): ContentTransform {
+    fun pageTransform(forward: Boolean, vertical: Boolean = false, reduced: Boolean = false): ContentTransform {
         if (reduced) return fadeIn(tween(FAST)) togetherWith fadeOut(tween(FAST))
         val from = if (forward) 1 else -1
-        val enter = fadeIn(tween(BASE)) + if (vertical) {
-            slideInVertically(arrive) { from * it / 4 }
-        } else {
-            slideInHorizontally(arrive) { from * it / 4 }
-        }
-        val exit = fadeOut(tween(EXIT)) + if (vertical) {
-            slideOutVertically(tween(EXIT)) { -from * it / 4 }
-        } else {
-            slideOutHorizontally(tween(EXIT)) { -from * it / 4 }
-        }
+        val enter =
+            fadeIn(tween(BASE)) +
+                if (vertical) {
+                    slideInVertically(arrive) { from * it / 4 }
+                } else {
+                    slideInHorizontally(arrive) { from * it / 4 }
+                }
+        val exit =
+            fadeOut(tween(EXIT)) +
+                if (vertical) {
+                    slideOutVertically(tween(EXIT)) { -from * it / 4 }
+                } else {
+                    slideOutHorizontally(tween(EXIT)) { -from * it / 4 }
+                }
         return enter togetherWith exit
     }
 

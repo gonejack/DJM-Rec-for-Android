@@ -91,9 +91,9 @@ import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.DjmRecMotion
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 @Composable
 fun LiveStreamScreen(viewModel: MainViewModel) {
@@ -113,12 +113,8 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     // orientation for the whole broadcast; on-screen controls rotate with the device.
     val streamPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
     val orientationLabel = if (streamPortrait) "Portrait (9:16)" else "Landscape (16:9)"
-    val artworkPreferences = remember(context) {
-        context.getSharedPreferences("livestream", Context.MODE_PRIVATE)
-    }
-    var artworkUri by rememberSaveable {
-        mutableStateOf(artworkPreferences.getString("custom_artwork_uri", null))
-    }
+    val artworkPreferences = remember(context) { context.getSharedPreferences("livestream", Context.MODE_PRIVATE) }
+    var artworkUri by rememberSaveable { mutableStateOf(artworkPreferences.getString("custom_artwork_uri", null)) }
     var localError by remember { mutableStateOf<String?>(null) }
     var pendingCameraConfig by remember { mutableStateOf<LiveStreamConfig?>(null) }
     var destinationUrl by rememberSaveable { mutableStateOf<String?>(null) }
@@ -128,58 +124,46 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     var saveVideo by rememberSaveable { mutableStateOf(false) }
 
     fun openUrl(url: String) {
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
-            .onFailure { localError = "No browser is available" }
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }.onFailure { localError = "No browser is available" }
     }
 
     fun shareBroadcast(url: String) {
-        val share = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Live DJ set")
-            putExtra(Intent.EXTRA_TEXT, "Watch my DJ set live: $url")
-        }
-        runCatching { context.startActivity(Intent.createChooser(share, "Share broadcast")) }
-            .onFailure { localError = "No sharing app is available" }
-    }
-
-    val cameraPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val config = pendingCameraConfig
-        pendingCameraConfig = null
-        if (granted && config != null) {
-            viewModel.startLiveStream(config)
-        } else if (!granted) {
-            localError = "Camera permission was denied. Choose Custom artwork or allow Camera."
-        }
-    }
-
-    val artworkPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+        val share =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Live DJ set")
+                putExtra(Intent.EXTRA_TEXT, "Watch my DJ set live: $url")
             }
-            artworkUri?.takeIf { it != uri.toString() }?.let { previous ->
-                runCatching {
-                    context.contentResolver.releasePersistableUriPermission(
-                        previous.toUri(),
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                }
-            }
-            artworkUri = uri.toString()
-            artworkPreferences.edit { putString("custom_artwork_uri", uri.toString()) }
-            localError = null
-        }
+        runCatching { context.startActivity(Intent.createChooser(share, "Share broadcast")) }.onFailure { localError = "No sharing app is available" }
     }
 
-    val captureReady = recordingState is RecordingState.Monitoring ||
-        recordingState is RecordingState.Recording || recordingState is RecordingState.Paused
+    val cameraPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val config = pendingCameraConfig
+            pendingCameraConfig = null
+            if (granted && config != null) {
+                viewModel.startLiveStream(config)
+            } else if (!granted) {
+                localError = "Camera permission was denied. Choose Custom artwork or allow Camera."
+            }
+        }
+
+    val artworkPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                artworkUri
+                    ?.takeIf { it != uri.toString() }
+                    ?.let { previous ->
+                        runCatching { context.contentResolver.releasePersistableUriPermission(previous.toUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                    }
+                artworkUri = uri.toString()
+                artworkPreferences.edit { putString("custom_artwork_uri", uri.toString()) }
+                localError = null
+            }
+        }
+
+    val captureReady = recordingState is RecordingState.Monitoring || recordingState is RecordingState.Recording || recordingState is RecordingState.Paused
 
     LaunchedEffect(platform) {
         viewModel.cancelStreamSetup()
@@ -221,9 +205,12 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     }
 
     val localOnly = platform == LivePlatform.LOCAL
-    val destinationReady = localOnly || runCatching {
-        LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait).endpoint()
-    }.isSuccess
+    val destinationReady =
+        localOnly ||
+            runCatching {
+                LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait).endpoint()
+            }
+                .isSuccess
     val videoWillSave = localOnly || (saveVideo && videoMode != LiveVideoMode.ARTWORK)
     val pictureReady = videoMode != LiveVideoMode.ARTWORK || !artworkUri.isNullOrBlank()
     val streamQuality by viewModel.streamQuality.collectAsState()
@@ -231,13 +218,27 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     val device by viewModel.deviceState.collectAsState()
 
     fun goLive() {
-        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait, artworkUri,
-            quality = streamQuality, recordVideo = videoWillSave, alsoRecordAudio = alsoRecordAudio)
+        val config =
+            LiveStreamConfig(
+                platform,
+                serverUrl,
+                streamKey,
+                videoMode,
+                streamPortrait,
+                artworkUri,
+                quality = streamQuality,
+                recordVideo = videoWillSave,
+                alsoRecordAudio = alsoRecordAudio)
         localError = if (config.streams) runCatching { config.endpoint() }.exceptionOrNull()?.message else null
-        if (localError != null) { step = 0; return }
-        if (!pictureReady) { step = 1; return }
-        if (videoMode != LiveVideoMode.ARTWORK && ContextCompat.checkSelfPermission(context,
-                Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        if (localError != null) {
+            step = 0
+            return
+        }
+        if (!pictureReady) {
+            step = 1
+            return
+        }
+        if (videoMode != LiveVideoMode.ARTWORK && ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             pendingCameraConfig = config
             cameraPermission.launch(Manifest.permission.CAMERA)
         } else viewModel.startLiveStream(config)
@@ -246,313 +247,373 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     // The key remains memory-only so a local encoder/camera failure can be retried.
     // Changing provider clears it; no draft key is written to preferences or saved state.
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (liveState.isActive) {
                 LiveStatusCard(liveState, captureReady)
-                Text(when {
-                    liveState.localOnly -> "Your camera video and mixer audio are being saved to Movies/DJMRec."
-                    liveState.usesCamera -> "Your camera and mixer audio are streaming to viewers."
-                    else -> "Your artwork and mixer audio are streaming. You can keep recording locally."
-                })
+                Text(
+                    when {
+                        liveState.localOnly -> "Your camera video and mixer audio are being saved to Movies/DJMRec."
+                        liveState.usesCamera -> "Your camera and mixer audio are streaming to viewers."
+                        else -> "Your artwork and mixer audio are streaming. You can keep recording locally."
+                    })
                 if (liveState.recordingVideo) {
-                    Text("Saving video · part ${liveState.videoSegment} · new part every ${VideoRecordingPolicy.SEGMENT_MINUTES} min",
-                        style = MaterialTheme.typography.bodyMedium, color = AccentGreen)
+                    Text(
+                        "Saving video · part ${liveState.videoSegment} · new part every ${VideoRecordingPolicy.SEGMENT_MINUTES} min",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AccentGreen)
                 }
                 liveState.videoMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
                 if (liveState.overheated) {
-                    Text("Phone is overheating: frame rate and video bitrate reduced until it cools down.",
-                        style = MaterialTheme.typography.bodySmall, color = AccentAmber)
+                    Text(
+                        "Phone is overheating: frame rate and video bitrate reduced until it cools down.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AccentAmber)
                 }
                 if (liveState.recordingVideo && !liveState.localOnly) {
-                    OutlinedButton(onClick = viewModel::stopVideoRecording, modifier = Modifier.fillMaxWidth()) {
-                        Text("Stop saving video")
-                    }
+                    OutlinedButton(onClick = viewModel::stopVideoRecording, modifier = Modifier.fillMaxWidth()) { Text("Stop saving video") }
                 }
                 if (liveState.usesCamera) {
-                    Button(onClick = { viewModel.cameraConsoleOpen.value = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Return to camera")
-                    }
+                    Button(onClick = { viewModel.cameraConsoleOpen.value = true }, modifier = Modifier.fillMaxWidth()) { Text("Return to camera") }
                 }
                 youtubeBroadcast.viewerCount?.let { count ->
-                    Text("${formatViewerCount(count)} watching now",
-                        style = MaterialTheme.typography.titleMedium, color = AccentGreen)
+                    Text("${formatViewerCount(count)} watching now", style = MaterialTheme.typography.titleMedium, color = AccentGreen)
                 }
-                youtubeBroadcast.healthIssues.forEach { issue ->
-                    Text(issue, style = MaterialTheme.typography.bodySmall, color = AccentAmber)
-                }
-                youtubeBroadcast.watchUrl?.let { url ->
-                    OutlinedButton(onClick = { shareBroadcast(url) }) { Text("Share broadcast") }
-                }
-                youtubeBroadcast.studioUrl?.let { url ->
-                    OutlinedButton(onClick = { openUrl(url) }) { Text("Open YouTube Studio") }
-                }
+                youtubeBroadcast.healthIssues.forEach { issue -> Text(issue, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
+                youtubeBroadcast.watchUrl?.let { url -> OutlinedButton(onClick = { shareBroadcast(url) }) { Text("Share broadcast") } }
+                youtubeBroadcast.studioUrl?.let { url -> OutlinedButton(onClick = { openUrl(url) }) { Text("Open YouTube Studio") } }
             } else {
                 if (youtubeBroadcast.status == YouTubeBroadcastStatus.INTERRUPTED) {
                     Surface(color = AccentAmber.copy(alpha = 0.14f), shape = RoundedCornerShape(16.dp)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("YouTube broadcast still open", style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold)
+                            Text("YouTube broadcast still open", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(youtubeBroadcast.message, style = MaterialTheme.typography.bodyMedium)
-                            Button(onClick = viewModel::resumeYouTubeBroadcast,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Button(onClick = viewModel::resumeYouTubeBroadcast, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                                 Text("Resume broadcast")
                             }
-                            OutlinedButton(onClick = viewModel::endYouTubeBroadcast,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            OutlinedButton(onClick = viewModel::endYouTubeBroadcast, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                                 Text("End broadcast")
                             }
                         }
                     }
                 }
                 Text("Share your set", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Choose a destination and picture, then go live. Your USB mixer arms automatically.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Choose a destination and picture, then go live. Your USB mixer arms automatically.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Connect", "Picture", "Go live").forEachIndexed { index, label ->
-                        FilterChip(selected = step == index,
-                            onClick = { step = index }, enabled = index == 0 || destinationReady && (index == 1 || pictureReady),
+                        FilterChip(
+                            selected = step == index,
+                            onClick = { step = index },
+                            enabled = index == 0 || destinationReady && (index == 1 || pictureReady),
                             label = { Text("${index + 1} $label") })
                     }
                 }
                 val reducedMotion = rememberReducedMotion()
                 AnimatedContent(
                     targetState = step,
-                    transitionSpec = {
-                        DjmRecMotion.pageTransform(forward = targetState >= initialState, vertical = true, reduced = reducedMotion)
-                    },
-                    label = "wizardStep"
-                ) { currentStep ->
-                // AnimatedContent stacks its content roots at one origin; this Column restores
-                // the vertical flow between the step's fields.
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                when (currentStep) {
-                    0 -> {
-                        Text("Where are you streaming?", style = MaterialTheme.typography.titleMedium)
-                        LivePlatform.entries.forEach { option ->
-                            LiveChoiceButton(
-                                label = option.label,
-                                selected = platform == option,
-                                enabled = !setupState.isBusy,
-                                onClick = {
-                                    if (platform != option) {
-                                        viewModel.abandonYouTubeSetup()
-                                        platform = option; serverUrl = option.defaultServerUrl
-                                        streamKey = ""; destinationUrl = null; localError = null
-                                        if (option == LivePlatform.LOCAL && videoMode == LiveVideoMode.ARTWORK) {
-                                            videoMode = LiveVideoMode.BACK_CAMERA
+                    transitionSpec = { DjmRecMotion.pageTransform(forward = targetState >= initialState, vertical = true, reduced = reducedMotion) },
+                    label = "wizardStep") { currentStep ->
+                        // AnimatedContent stacks its content roots at one origin; this Column
+                        // restores
+                        // the vertical flow between the step's fields.
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            when (currentStep) {
+                                0 -> {
+                                    Text("Where are you streaming?", style = MaterialTheme.typography.titleMedium)
+                                    LivePlatform.entries.forEach { option ->
+                                        LiveChoiceButton(
+                                            label = option.label,
+                                            selected = platform == option,
+                                            enabled = !setupState.isBusy,
+                                            onClick = {
+                                                if (platform != option) {
+                                                    viewModel.abandonYouTubeSetup()
+                                                    platform = option
+                                                    serverUrl = option.defaultServerUrl
+                                                    streamKey = ""
+                                                    destinationUrl = null
+                                                    localError = null
+                                                    if (option == LivePlatform.LOCAL && videoMode == LiveVideoMode.ARTWORK) {
+                                                        videoMode = LiveVideoMode.BACK_CAMERA
+                                                    }
+                                                }
+                                            })
+                                    }
+                                    // Field-level validation feedback: errors point at the
+                                    // field that caused them.
+                                    val keyError = localError?.takeIf { it.contains("key", ignoreCase = true) }
+                                    val serverError = localError?.takeIf { keyError == null }
+                                    when (platform) {
+                                        LivePlatform.YOUTUBE -> {
+                                            Text(
+                                                "Create a broadcast in YouTube Studio, then copy its server address and stream key here. Start and end the broadcast in YouTube Studio.")
+                                            OutlinedButton(onClick = { openUrl("https://studio.youtube.com") }) { Text("Open YouTube Studio") }
+                                            OutlinedTextField(
+                                                serverUrl,
+                                                {
+                                                    serverUrl = it
+                                                    localError = null
+                                                },
+                                                label = { Text("YouTube RTMP / RTMPS server") },
+                                                singleLine = true,
+                                                isError = serverError != null,
+                                                supportingText = serverError?.let { text -> { Text(text) } },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                                modifier = Modifier.fillMaxWidth())
+                                            StreamKeyField(
+                                                streamKey,
+                                                {
+                                                    streamKey = it
+                                                    localError = null
+                                                },
+                                                "YouTube stream key",
+                                                keyError != null,
+                                                keyError)
+                                        }
+                                        LivePlatform.MIXCLOUD -> {
+                                            Text("Open Mixcloud, sign in, then copy your stream key here. Mixcloud Pro is required.")
+                                            OutlinedButton(onClick = { platform.setupUrl?.let(::openUrl) }) { Text("Open Mixcloud setup") }
+                                            StreamKeyField(
+                                                streamKey,
+                                                {
+                                                    streamKey = it
+                                                    localError = null
+                                                },
+                                                "Mixcloud stream key",
+                                                keyError != null,
+                                                keyError)
+                                        }
+                                        LivePlatform.LOCAL -> {
+                                            Text(
+                                                "Nothing is streamed. Your camera video and the mixer audio are saved as MP4 in " +
+                                                    "Movies/DJMRec, in ${VideoRecordingPolicy.SEGMENT_MINUTES}-minute parts so a crash " +
+                                                    "can only cost the part being written.")
+                                        }
+                                        LivePlatform.CUSTOM -> {
+                                            Text("Copy the server and stream key from your streaming service.")
+                                            OutlinedTextField(
+                                                serverUrl,
+                                                {
+                                                    serverUrl = it
+                                                    localError = null
+                                                },
+                                                label = { Text("RTMP / RTMPS server") },
+                                                singleLine = true,
+                                                isError = serverError != null,
+                                                supportingText = serverError?.let { text -> { Text(text) } },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                                modifier = Modifier.fillMaxWidth())
+                                            StreamKeyField(
+                                                streamKey,
+                                                {
+                                                    streamKey = it
+                                                    localError = null
+                                                },
+                                                "Stream key",
+                                                keyError != null,
+                                                keyError)
                                         }
                                     }
+                                    if (setupState.isBusy) {
+                                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                                        Text(setupState.message)
+                                    } else if (setupState.status == StreamSetupStatus.ERROR) {
+                                        Text(setupState.message, color = MaterialTheme.colorScheme.error)
+                                    }
                                 }
-                            )
-                        }
-                        // Field-level validation feedback: errors point at the field that caused them.
-                        val keyError = localError?.takeIf { it.contains("key", ignoreCase = true) }
-                        val serverError = localError?.takeIf { keyError == null }
-                        when (platform) {
-                            LivePlatform.YOUTUBE -> {
-                                Text("Create a broadcast in YouTube Studio, then copy its server address and stream key here. Start and end the broadcast in YouTube Studio.")
-                                OutlinedButton(onClick = { openUrl("https://studio.youtube.com") }) {
-                                    Text("Open YouTube Studio")
+                                1 -> {
+                                    Text(if (localOnly) "Which camera?" else "What will viewers see?", style = MaterialTheme.typography.titleMedium)
+                                    LiveVideoMode.entries
+                                        .filter { !localOnly || it != LiveVideoMode.ARTWORK }
+                                        .forEach { option ->
+                                            LiveChoiceButton(
+                                                label = option.label,
+                                                selected = videoMode == option,
+                                                onClick = {
+                                                    videoMode = option
+                                                    localError = null
+                                                })
+                                        }
+                                    if (videoMode == LiveVideoMode.ARTWORK) {
+                                        CustomArtworkPicker(
+                                            artworkUri,
+                                            true,
+                                            { artworkPicker.launch(arrayOf("image/*")) },
+                                            {
+                                                artworkUri = null
+                                                artworkPreferences.edit { remove("custom_artwork_uri") }
+                                            })
+                                        Text("Still artwork uses less power than the camera.", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Stream orientation: $orientationLabel")
+                                        }
+                                    Text(
+                                        "Matches how you hold your phone when you go live. The stream keeps this shape; on-screen controls rotate with your phone.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(if (localOnly) "Video quality" else "Stream quality", style = MaterialTheme.typography.titleMedium)
+                                    LiveStreamQuality.PRESETS.forEach { option ->
+                                        LiveChoiceButton(
+                                            label = option.detail, selected = streamQuality == option, onClick = { viewModel.setStreamQuality(option) })
+                                    }
+                                    LiveChoiceButton(
+                                        label = "Custom",
+                                        selected = !streamQuality.preset,
+                                        onClick = {
+                                            if (streamQuality.preset) {
+                                                viewModel.setStreamQuality(streamQuality.copy(id = "custom", label = "Custom", preset = false))
+                                            }
+                                        })
+                                    if (!streamQuality.preset) {
+                                        Text("Resolution", style = MaterialTheme.typography.titleSmall)
+                                        Row(
+                                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                listOf(720 to 1280, 1080 to 1920, 1440 to 2560).forEach { (height, width) ->
+                                                    FilterChip(
+                                                        selected = streamQuality.height == height,
+                                                        onClick = { viewModel.setStreamQuality(streamQuality.copy(width = width, height = height)) },
+                                                        label = { Text("${height}p") })
+                                                }
+                                            }
+                                        Text("Bitrate: ${streamQuality.videoBitrate / 1_000_000} Mbps", style = MaterialTheme.typography.titleSmall)
+                                        Slider(
+                                            value = (streamQuality.videoBitrate / 1_000_000).toFloat(),
+                                            onValueChange = { viewModel.setStreamQuality(streamQuality.copy(videoBitrate = it.toInt() * 1_000_000)) },
+                                            valueRange = 5f..30f,
+                                            steps = 24)
+                                    }
+                                    Text(
+                                        "Higher resolutions and bitrates need a strong upstream connection. If viewers see stuttering or the stream drops, choose 720p or lower the bitrate.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Meters, timers and controls stay on your phone. Viewers see only your camera or artwork.")
                                 }
-                                OutlinedTextField(serverUrl, { serverUrl = it; localError = null },
-                                    label = { Text("YouTube RTMP / RTMPS server") },
-                                    singleLine = true, isError = serverError != null,
-                                    supportingText = serverError?.let { text -> { Text(text) } },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                                    modifier = Modifier.fillMaxWidth())
-                                StreamKeyField(streamKey, { streamKey = it; localError = null },
-                                    "YouTube stream key", keyError != null, keyError)
+                                else -> {
+                                    Text(if (localOnly) "Ready to record?" else "Ready for your audience?", style = MaterialTheme.typography.titleMedium)
+                                    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
+                                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(platform.label, fontWeight = FontWeight.Bold)
+                                            Text("${videoMode.label} / $orientationLabel")
+                                            Text(streamQuality.detail)
+                                            Text(device?.productName ?: "No mixer selected")
+                                            if (device?.recordsSelectedInputs == true) {
+                                                Text(
+                                                    "Audio: Mix · L ← ${com.audiopro.djmrec.audio.StereoMixRoute.sourceLabel(mixRoute.leftChannel)} / " +
+                                                        "R ← ${com.audiopro.djmrec.audio.StereoMixRoute.sourceLabel(mixRoute.rightChannel)}")
+                                            }
+                                            Text(
+                                                when {
+                                                    captureReady -> health.message
+                                                    device == null -> "Connect a USB mixer before going live."
+                                                    else -> "Mixer monitoring starts automatically when you go live."
+                                                },
+                                                color =
+                                                    if (captureReady && health.level == com.audiopro.djmrec.audio.RecordingHealthLevel.GOOD) AccentGreen
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant)
+                                            StreamSetupMeters(viewModel)
+                                        }
+                                    }
+                                    GoLiveSwitch(
+                                        title = "Also record the set",
+                                        detail =
+                                            "Saves the lossless audio (your chosen format) while you ${if (localOnly) "film" else "stream"}. " +
+                                                "Streams are compressed and platforms may mute DJ sets, so this is your safe copy.",
+                                        checked = alsoRecordAudio,
+                                        onChange = { alsoRecordAudio = it })
+                                    if (!localOnly && videoMode != LiveVideoMode.ARTWORK) {
+                                        GoLiveSwitch(
+                                            title = "Save video to phone",
+                                            detail =
+                                                "Keeps an MP4 of the camera with 320 kbps Mix audio in Movies/DJMRec, at full " +
+                                                    "quality even when the stream has to lower its bitrate.",
+                                            checked = saveVideo,
+                                            onChange = { saveVideo = it })
+                                    }
+                                    if (videoWillSave) {
+                                        Text(
+                                            VideoRecordingPolicy.storageSummary(
+                                                viewModel.freeStorageBytes(), VideoRecordingPolicy.recordBitrate(streamQuality.height)),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text("Play music and check both meters before starting. Your phone microphone is never used.")
+                                    Text(
+                                        "Livestreaming remains experimental. Check the service's preview after connecting.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
-                            LivePlatform.MIXCLOUD -> {
-                                Text("Open Mixcloud, sign in, then copy your stream key here. Mixcloud Pro is required.")
-                                OutlinedButton(onClick = { platform.setupUrl?.let(::openUrl) }) { Text("Open Mixcloud setup") }
-                                StreamKeyField(streamKey, { streamKey = it; localError = null }, "Mixcloud stream key", keyError != null, keyError)
-                            }
-                            LivePlatform.LOCAL -> {
-                                Text("Nothing is streamed. Your camera video and the mixer audio are saved as MP4 in " +
-                                    "Movies/DJMRec, in ${VideoRecordingPolicy.SEGMENT_MINUTES}-minute parts so a crash " +
-                                    "can only cost the part being written.")
-                            }
-                            LivePlatform.CUSTOM -> {
-                                Text("Copy the server and stream key from your streaming service.")
-                                OutlinedTextField(serverUrl, { serverUrl = it; localError = null }, label = { Text("RTMP / RTMPS server") },
-                                    singleLine = true, isError = serverError != null,
-                                    supportingText = serverError?.let { text -> { Text(text) } },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                                    modifier = Modifier.fillMaxWidth())
-                                StreamKeyField(streamKey, { streamKey = it; localError = null }, "Stream key", keyError != null, keyError)
-                            }
-                        }
-                        if (setupState.isBusy) {
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text(setupState.message)
-                        } else if (setupState.status == StreamSetupStatus.ERROR) {
-                            Text(setupState.message, color = MaterialTheme.colorScheme.error)
                         }
                     }
-                    1 -> {
-                        Text(if (localOnly) "Which camera?" else "What will viewers see?", style = MaterialTheme.typography.titleMedium)
-                        LiveVideoMode.entries.filter { !localOnly || it != LiveVideoMode.ARTWORK }.forEach { option ->
-                            LiveChoiceButton(
-                                label = option.label,
-                                selected = videoMode == option,
-                                onClick = { videoMode = option; localError = null }
-                            )
-                        }
-                        if (videoMode == LiveVideoMode.ARTWORK) {
-                            CustomArtworkPicker(artworkUri, true, { artworkPicker.launch(arrayOf("image/*")) }, {
-                                artworkUri = null
-                                artworkPreferences.edit { remove("custom_artwork_uri") }
-                            })
-                            Text("Still artwork uses less power than the camera.", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Stream orientation: $orientationLabel")
-                        }
-                        Text("Matches how you hold your phone when you go live. The stream keeps this shape; on-screen controls rotate with your phone.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(if (localOnly) "Video quality" else "Stream quality", style = MaterialTheme.typography.titleMedium)
-                        LiveStreamQuality.PRESETS.forEach { option ->
-                            LiveChoiceButton(
-                                label = option.detail,
-                                selected = streamQuality == option,
-                                onClick = { viewModel.setStreamQuality(option) }
-                            )
-                        }
-                        LiveChoiceButton(
-                            label = "Custom",
-                            selected = !streamQuality.preset,
-                            onClick = {
-                                if (streamQuality.preset) {
-                                    viewModel.setStreamQuality(
-                                        streamQuality.copy(id = "custom", label = "Custom", preset = false)
-                                    )
-                                }
-                            }
-                        )
-                        if (!streamQuality.preset) {
-                            Text("Resolution", style = MaterialTheme.typography.titleSmall)
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf(720 to 1280, 1080 to 1920, 1440 to 2560).forEach { (height, width) ->
-                                    FilterChip(
-                                        selected = streamQuality.height == height,
-                                        onClick = { viewModel.setStreamQuality(streamQuality.copy(width = width, height = height)) },
-                                        label = { Text("${height}p") }
-                                    )
-                                }
-                            }
-                            Text("Bitrate: ${streamQuality.videoBitrate / 1_000_000} Mbps",
-                                style = MaterialTheme.typography.titleSmall)
-                            Slider(
-                                value = (streamQuality.videoBitrate / 1_000_000).toFloat(),
-                                onValueChange = {
-                                    viewModel.setStreamQuality(streamQuality.copy(videoBitrate = it.toInt() * 1_000_000))
-                                },
-                                valueRange = 5f..30f,
-                                steps = 24
-                            )
-                        }
-                        Text("Higher resolutions and bitrates need a strong upstream connection. If viewers see stuttering or the stream drops, choose 720p or lower the bitrate.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Meters, timers and controls stay on your phone. Viewers see only your camera or artwork.")
-                    }
-                    else -> {
-                        Text(if (localOnly) "Ready to record?" else "Ready for your audience?", style = MaterialTheme.typography.titleMedium)
-                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(platform.label, fontWeight = FontWeight.Bold)
-                                Text("${videoMode.label} / $orientationLabel")
-                                Text(streamQuality.detail)
-                                Text(device?.productName ?: "No mixer selected")
-                                if (device?.recordsSelectedInputs == true) {
-                                    Text("Audio: Mix · L ← ${com.audiopro.djmrec.audio.StereoMixRoute.sourceLabel(mixRoute.leftChannel)} / " +
-                                        "R ← ${com.audiopro.djmrec.audio.StereoMixRoute.sourceLabel(mixRoute.rightChannel)}")
-                                }
-                                Text(
-                                    when {
-                                        captureReady -> health.message
-                                        device == null -> "Connect a USB mixer before going live."
-                                        else -> "Mixer monitoring starts automatically when you go live."
-                                    },
-                                    color = if (captureReady && health.level == com.audiopro.djmrec.audio.RecordingHealthLevel.GOOD) AccentGreen
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                StreamSetupMeters(viewModel)
-                            }
-                        }
-                        GoLiveSwitch(
-                            title = "Also record the set",
-                            detail = "Saves the lossless audio (your chosen format) while you ${if (localOnly) "film" else "stream"}. " +
-                                "Streams are compressed and platforms may mute DJ sets, so this is your safe copy.",
-                            checked = alsoRecordAudio,
-                            onChange = { alsoRecordAudio = it }
-                        )
-                        if (!localOnly && videoMode != LiveVideoMode.ARTWORK) {
-                            GoLiveSwitch(
-                                title = "Save video to phone",
-                                detail = "Keeps an MP4 of the camera with 320 kbps Mix audio in Movies/DJMRec, at full " +
-                                    "quality even when the stream has to lower its bitrate.",
-                                checked = saveVideo,
-                                onChange = { saveVideo = it }
-                            )
-                        }
-                        if (videoWillSave) {
-                            Text(VideoRecordingPolicy.storageSummary(viewModel.freeStorageBytes(),
-                                VideoRecordingPolicy.recordBitrate(streamQuality.height)),
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("Play music and check both meters before starting. Your phone microphone is never used.")
-                        Text("Livestreaming remains experimental. Check the service's preview after connecting.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                }
-                }
                 if (liveState.status == LiveStreamStatus.ERROR) Text(liveState.message, color = MaterialTheme.colorScheme.error)
                 localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }
         Surface(shadowElevation = 8.dp) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (!liveState.isActive && step > 0) TextButton(onClick = { step-- }) { Text("Back") }
-                Button(onClick = {
-                    if (liveState.isActive) confirmEnd = true
-                    else when (step) {
-                        0 -> step = 1
-                        1 -> step = 2
-                        else -> goLive()
+                Button(
+                    onClick = {
+                        if (liveState.isActive) confirmEnd = true
+                        else
+                            when (step) {
+                                0 -> step = 1
+                                1 -> step = 2
+                                else -> goLive()
+                            }
+                    },
+                    enabled =
+                        liveState.isActive ||
+                            when (step) {
+                                0 -> !setupState.isBusy && destinationReady
+                                1 -> destinationReady && pictureReady
+                                else -> destinationReady && pictureReady && device != null
+                            },
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
+                        Text(
+                            if (liveState.isActive) {
+                                if (liveState.localOnly) "Stop video" else "End stream"
+                            } else
+                                when (step) {
+                                    0 -> "Continue"
+                                    1 -> if (localOnly) "Review recording" else "Review stream"
+                                    else -> if (localOnly) "Start video recording" else "Go live on ${platform.label}"
+                                })
                     }
-                }, enabled = liveState.isActive || when (step) {
-                    0 -> !setupState.isBusy && destinationReady
-                    1 -> destinationReady && pictureReady
-                    else -> destinationReady && pictureReady && device != null
-                }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                    Text(if (liveState.isActive) { if (liveState.localOnly) "Stop video" else "End stream" } else when (step) {
-                        0 -> "Continue"
-                        1 -> if (localOnly) "Review recording" else "Review stream"
-                        else -> if (localOnly) "Start video recording" else "Go live on ${platform.label}"
-                    })
-                }
             }
         }
     }
-    if (confirmEnd) AlertDialog(onDismissRequest = { confirmEnd = false },
-        title = { Text(if (liveState.localOnly) "Stop video recording?" else "End livestream?") },
-        text = { Text(if (liveState.localOnly) "The video is saved to Movies/DJMRec. Any audio recording continues."
-            else "Viewers will disconnect. Any local recording continues.") },
-        confirmButton = { TextButton(onClick = { confirmEnd = false; viewModel.stopLiveStream() }) {
-            Text(if (liveState.localOnly) "Stop video" else "End stream") } },
-        dismissButton = { TextButton(onClick = { confirmEnd = false }) {
-            Text(if (liveState.localOnly) "Keep recording" else "Keep streaming") } })
+    if (confirmEnd)
+        AlertDialog(
+            onDismissRequest = { confirmEnd = false },
+            title = { Text(if (liveState.localOnly) "Stop video recording?" else "End livestream?") },
+            text = {
+                Text(
+                    if (liveState.localOnly) "The video is saved to Movies/DJMRec. Any audio recording continues."
+                    else "Viewers will disconnect. Any local recording continues.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmEnd = false
+                        viewModel.stopLiveStream()
+                    }) {
+                        Text(if (liveState.localOnly) "Stop video" else "End stream")
+                    }
+            },
+            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text(if (liveState.localOnly) "Keep recording" else "Keep streaming") } })
 }
 
 @Composable
 private fun GoLiveSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -562,30 +623,19 @@ private fun GoLiveSwitch(title: String, detail: String, checked: Boolean, onChan
 }
 
 @Composable
-private fun LiveChoiceButton(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
+private fun LiveChoiceButton(label: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-            contentColor = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurface
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-        )
-    ) {
-        Text(label)
-    }
+        colors =
+            ButtonDefaults.outlinedButtonColors(
+                containerColor =
+                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))) {
+            Text(label)
+        }
 }
 
 @Composable
@@ -595,63 +645,39 @@ private fun StreamSetupMeters(viewModel: MainViewModel) {
 }
 
 @Composable
-private fun CustomArtworkPicker(
-    artworkUri: String?,
-    enabled: Boolean,
-    onChoose: () -> Unit,
-    onRemove: () -> Unit
-) {
+private fun CustomArtworkPicker(artworkUri: String?, enabled: Boolean, onChoose: () -> Unit, onRemove: () -> Unit) {
     val context = LocalContext.current
     var preview by remember { mutableStateOf<Bitmap?>(null) }
     var previewLoading by remember { mutableStateOf(false) }
     LaunchedEffect(artworkUri) {
         previewLoading = !artworkUri.isNullOrBlank()
-        preview = if (artworkUri.isNullOrBlank()) null else withContext(Dispatchers.IO) {
-            decodeArtworkPreview(context, artworkUri)
-        }
+        preview = if (artworkUri.isNullOrBlank()) null else withContext(Dispatchers.IO) { decodeArtworkPreview(context, artworkUri) }
         previewLoading = false
     }
     DisposableEffect(preview) {
         val activeBitmap = preview
         onDispose { activeBitmap?.recycle() }
     }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (!artworkUri.isNullOrBlank()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.Black
-                ) {
+                Surface(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f), shape = RoundedCornerShape(10.dp), color = Color.Black) {
                     val bitmap = preview
                     if (bitmap != null) {
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = "Selected livestream artwork",
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                            modifier = Modifier.fillMaxSize())
                     } else if (previewLoading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                         }
                     } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Artwork unavailable. Choose another image.")
-                        }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Artwork unavailable. Choose another image.") }
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onChoose, enabled = enabled, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null)
                         Text("Change", modifier = Modifier.padding(start = 8.dp))
@@ -663,11 +689,7 @@ private fun CustomArtworkPicker(
                 }
             } else {
                 Text("Choose an image shown behind your mixer audio. No default artwork is used.")
-                OutlinedButton(
-                    onClick = onChoose,
-                    enabled = enabled,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                OutlinedButton(onClick = onChoose, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null)
                     Text("Choose artwork", modifier = Modifier.padding(start = 8.dp))
                 }
@@ -678,13 +700,7 @@ private fun CustomArtworkPicker(
 
 /** Masked stream-key input with a show/hide toggle (keys are sensitive but must be checkable). */
 @Composable
-private fun StreamKeyField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    isError: Boolean,
-    supportingText: String?
-) {
+private fun StreamKeyField(value: String, onValueChange: (String) -> Unit, label: String, isError: Boolean, supportingText: String?) {
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
@@ -698,55 +714,46 @@ private fun StreamKeyField(
             IconButton(onClick = { visible = !visible }) {
                 Icon(
                     if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = if (visible) "Hide stream key" else "Show stream key"
-                )
+                    contentDescription = if (visible) "Hide stream key" else "Show stream key")
             }
         },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
-        modifier = Modifier.fillMaxWidth()
-    )
+        modifier = Modifier.fillMaxWidth())
 }
 
 private fun decodeArtworkPreview(context: Context, artworkUri: String): Bitmap? = runCatching {
-    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, artworkUri.toUri())) {
-            decoder, info, _ ->
+    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, artworkUri.toUri())) { decoder, info, _ ->
         decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         val longestSide = maxOf(info.size.width, info.size.height)
         decoder.setTargetSampleSize((longestSide / 1_280).coerceAtLeast(1))
     }
-}.getOrNull()
+}
+    .getOrNull()
 
 @Composable
 private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {
-    val color = when (liveState.status) {
-        LiveStreamStatus.LIVE -> AccentRed
-        LiveStreamStatus.PREPARING,
-        LiveStreamStatus.CONNECTING,
-        LiveStreamStatus.RECONNECTING -> AccentAmber
-        LiveStreamStatus.ERROR -> AccentRed
-        LiveStreamStatus.IDLE -> if (captureReady) AccentGreen else MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val message = if (liveState.status == LiveStreamStatus.IDLE && !captureReady) {
-        "Connect mixer and wait for USB signal"
-    } else liveState.message
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = color.copy(alpha = 0.10f)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+    val color =
+        when (liveState.status) {
+            LiveStreamStatus.LIVE -> AccentRed
+            LiveStreamStatus.PREPARING,
+            LiveStreamStatus.CONNECTING,
+            LiveStreamStatus.RECONNECTING -> AccentAmber
+            LiveStreamStatus.ERROR -> AccentRed
+            LiveStreamStatus.IDLE -> if (captureReady) AccentGreen else MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    val message =
+        if (liveState.status == LiveStreamStatus.IDLE && !captureReady) {
+            "Connect mixer and wait for USB signal"
+        } else liveState.message
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = color.copy(alpha = 0.10f)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.background(color, CircleShape).padding(5.dp))
                 Text(
-                    if (liveState.localOnly && liveState.status == LiveStreamStatus.LIVE) "RECORDING VIDEO"
-                    else liveState.status.name.replace('_', ' '),
+                    if (liveState.localOnly && liveState.status == LiveStreamStatus.LIVE) "RECORDING VIDEO" else liveState.status.name.replace('_', ' '),
                     color = color,
                     style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                    fontWeight = FontWeight.Bold)
                 if (liveState.status == LiveStreamStatus.PREPARING ||
                     liveState.status == LiveStreamStatus.CONNECTING ||
                     liveState.status == LiveStreamStatus.RECONNECTING) {
@@ -757,40 +764,27 @@ private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {
             if (liveState.isActive) {
                 Text(
                     if (liveState.audioPcmBytes == 0L) "Mixer audio: waiting for PCM"
-                    else String.format(
-                        Locale.US,
-                        "Mixer audio: %.1f dBFS",
-                        liveState.audioPeakDb
-                    ),
+                    else String.format(Locale.US, "Mixer audio: %.1f dBFS", liveState.audioPeakDb),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (liveState.audioPcmBytes == 0L) AccentAmber
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    color = if (liveState.audioPcmBytes == 0L) AccentAmber else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (liveState.status == LiveStreamStatus.LIVE && !liveState.localOnly) {
                 val mbps = liveState.bitrateBitsPerSecond / 1_000_000f
                 Text(
-                    String.format(
-                        Locale.US,
-                        "Upload %.2f Mbps",
-                        mbps
-                    ),
+                    String.format(Locale.US, "Upload %.2f Mbps", mbps),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (liveState.usesCamera) {
                     Text(
-                        "Camera ${if (liveState.cameraOpened) "open" else "opening"} | " +
-                            "captured ${liveState.cameraFramesCaptured} frames",
+                        "Camera ${if (liveState.cameraOpened) "open" else "opening"} | " + "captured ${liveState.cameraFramesCaptured} frames",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (liveState.droppedAudioFrames > 0 || liveState.droppedVideoFrames > 0) Text(
-                    "Dropped audio ${liveState.droppedAudioFrames} | video ${liveState.droppedVideoFrames}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (liveState.droppedAudioFrames > 0 || liveState.droppedVideoFrames > 0)
+                    Text(
+                        "Dropped audio ${liveState.droppedAudioFrames} | video ${liveState.droppedVideoFrames}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

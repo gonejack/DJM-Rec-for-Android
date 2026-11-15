@@ -10,20 +10,20 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MultitrackRowsTest {
-    private fun device(vendorId: Int, productId: Int, channels: Int) = UsbAudioDeviceInfo(
-        deviceName = "/dev/bus/usb/001/002",
-        productName = "Test device",
-        vendorId = vendorId,
-        productId = productId,
-        streamingInterfaceNumber = 1,
-        activeAlternateSetting = 1,
-        isochronousInEndpointAddress = 0x81,
-        isochronousInMaxPacketSize = 512,
-        channelCount = channels,
-        bitResolution = 24,
-        subframeSize = 3,
-        supportedSampleRates = listOf(48_000)
-    )
+    private fun device(vendorId: Int, productId: Int, channels: Int) =
+        UsbAudioDeviceInfo(
+            deviceName = "/dev/bus/usb/001/002",
+            productName = "Test device",
+            vendorId = vendorId,
+            productId = productId,
+            streamingInterfaceNumber = 1,
+            activeAlternateSetting = 1,
+            isochronousInEndpointAddress = 0x81,
+            isochronousInMaxPacketSize = 512,
+            channelCount = channels,
+            bitResolution = 24,
+            subframeSize = 3,
+            supportedSampleRates = listOf(48_000))
 
     @Test
     fun `a9 rows name each pair after its routed source with the master on top slot`() {
@@ -47,11 +47,11 @@ class MultitrackRowsTest {
     @Test
     fun `routes read back from the mixer win over the chosen source`() {
         val a9 = device(0x2B73, 0x003C, 10)
-        val settings = MultitrackSettings(
-            chosenSources = mapOf(2 to PioneerTrackRouting.PRE_FADER),
-            currentSources = mapOf(2 to PioneerTrackRouting.PHONO),
-            routingErrors = mapOf(2 to "The mixer did not accept this source.")
-        )
+        val settings =
+            MultitrackSettings(
+                chosenSources = mapOf(2 to PioneerTrackRouting.PRE_FADER),
+                currentSources = mapOf(2 to PioneerTrackRouting.PHONO),
+                routingErrors = mapOf(2 to "The mixer did not accept this source."))
         val row = MultitrackRows.build(a9, 10, 0, settings)[2]
         assertEquals("CH2 Phono", row.title)
         assertEquals("The mixer did not accept this source.", row.routingError)
@@ -60,9 +60,7 @@ class MultitrackRowsTest {
     @Test
     fun `generic interfaces use their usb pair numbers`() {
         val generic = device(0x1234, 0x0001, 6)
-        val rows = MultitrackRows.build(generic, 6, masterOffset = 0, settings = MultitrackSettings(
-            armed = mapOf(2 to false), gainsDb = mapOf(1 to -3.5f)
-        ))
+        val rows = MultitrackRows.build(generic, 6, masterOffset = 0, settings = MultitrackSettings(armed = mapOf(2 to false), gainsDb = mapOf(1 to -3.5f)))
         assertEquals(listOf("Master", "USB 3/4", "USB 5/6"), rows.map { it.title })
         assertEquals("USB 3-4", rows[1].fileLabel)
         assertEquals("Stereo input", rows[1].subtitle)
@@ -72,15 +70,16 @@ class MultitrackRowsTest {
         assertTrue(rows[1].sourceOptions.isEmpty())
     }
 
-    private fun cb5(inputs: List<Int>) = device(0x0BDA, 0x4F26, 2).copy(
-        productName = "CUBILUX CB5",
-        captureInputs = listOf(
-            UsbCaptureInput(1, "Cubilux CB5 MIC1", emptyList()),
-            UsbCaptureInput(2, "Cubilux CB5 Line In", emptyList()),
-            UsbCaptureInput(3, "Cubilux CB5 MIC2", emptyList())
-        ),
-        selectedInterfaceNumbers = inputs
-    )
+    private fun cb5(inputs: List<Int>) =
+        device(0x0BDA, 0x4F26, 2)
+            .copy(
+                productName = "CUBILUX CB5",
+                captureInputs =
+                    listOf(
+                        UsbCaptureInput(1, "Cubilux CB5 MIC1", emptyList()),
+                        UsbCaptureInput(2, "Cubilux CB5 Line In", emptyList()),
+                        UsbCaptureInput(3, "Cubilux CB5 MIC2", emptyList())),
+                selectedInterfaceNumbers = inputs)
 
     @Test
     fun `cb5 records all inputs through equal track buses in selection order`() {
@@ -98,8 +97,7 @@ class MultitrackRowsTest {
 
     @Test
     fun `selecting both microphones shows two tracks with independent meters`() {
-        val rows = MultitrackRows.build(cb5(listOf(1, 3)), 4, -1,
-            MultitrackSettings(gainsDb = mapOf(0 to -3.5f, 1 to 2f)))
+        val rows = MultitrackRows.build(cb5(listOf(1, 3)), 4, -1, MultitrackSettings(gainsDb = mapOf(0 to -3.5f, 1 to 2f)))
         assertEquals(listOf("Track 1", "Track 2"), rows.map { it.title })
         assertEquals(listOf("MIC1", "MIC2"), rows.map { it.subtitle })
         assertEquals(listOf(1, 2), rows.map { it.displayNumber })
@@ -123,8 +121,7 @@ class MultitrackRowsTest {
 
     @Test
     fun `disarming a cb5 track keeps its input available to monitoring and mix`() {
-        val rows = MultitrackRows.build(cb5(listOf(1, 3)), 4, -1,
-            MultitrackSettings(armed = mapOf(0 to false)))
+        val rows = MultitrackRows.build(cb5(listOf(1, 3)), 4, -1, MultitrackSettings(armed = mapOf(0 to false)))
         assertEquals(listOf("Track 1", "Track 2"), rows.map { it.title })
         assertEquals(listOf("MIC1", "MIC2"), rows.map { it.subtitle })
         assertEquals(listOf(0, 2), rows.map { it.channels.firstChannel })
@@ -135,8 +132,7 @@ class MultitrackRowsTest {
 
     @Test
     fun `all cb5 tracks can be disarmed for mix-only recording`() {
-        val rows = MultitrackRows.build(cb5(listOf(3, 1)), 4, -1,
-            MultitrackSettings(armed = mapOf(0 to false, 1 to false)))
+        val rows = MultitrackRows.build(cb5(listOf(3, 1)), 4, -1, MultitrackSettings(armed = mapOf(0 to false, 1 to false)))
         assertEquals(2, rows.size)
         assertTrue(rows.none { it.armed })
         assertEquals(listOf("MIC2", "MIC1"), rows.map { it.subtitle })

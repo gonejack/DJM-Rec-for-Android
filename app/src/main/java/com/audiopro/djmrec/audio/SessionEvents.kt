@@ -4,9 +4,8 @@ import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * [notice] explains an automatic stop (e.g. low storage or silence); null for a normal save.
- * [alsoSaved] names an extra file written with the set, such as the MP3 copy.
- * [tracksSaved] multitrack files written next to the set, in [tracksFolder].
+ * [notice] explains an automatic stop (e.g. low storage or silence); null for a normal save. [alsoSaved] names an extra file written with the set, such as the
+ * MP3 copy. [tracksSaved] multitrack files written next to the set, in [tracksFolder].
  */
 data class SavedRecording(
     val uri: Uri,

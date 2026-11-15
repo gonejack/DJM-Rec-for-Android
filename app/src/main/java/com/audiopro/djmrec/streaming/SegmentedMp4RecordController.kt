@@ -20,13 +20,11 @@ internal interface VideoSegmentSink {
 }
 
 /**
- * MP4 recorder that starts a new file at the first video keyframe after every
- * [segmentDurationUs], so a set is saved as back-to-back segments. MediaMuxer only writes an
- * MP4's index when the file is closed; if the app is killed, only the open segment is lost.
+ * MP4 recorder that starts a new file at the first video keyframe after every [segmentDurationUs], so a set is saved as back-to-back segments. MediaMuxer only
+ * writes an MP4's index when the file is closed; if the app is killed, only the open segment is lost.
  *
- * Segments switch on a keyframe with the same encoder, so no frames are dropped at the cut.
- * Frames arrive on RootEncoder's muxer coroutine; the sink is called from that coroutine too,
- * except for the final close, which runs on the thread that stops recording.
+ * Segments switch on a keyframe with the same encoder, so no frames are dropped at the cut. Frames arrive on RootEncoder's muxer coroutine; the sink is called
+ * from that coroutine too, except for the final close, which runs on the thread that stops recording.
  */
 internal class SegmentedMp4RecordController(
     private val segmentDurationUs: Long,
@@ -49,8 +47,7 @@ internal class SegmentedMp4RecordController(
     private var lastVideoUs = -1L
     private var lastAudioUs = -1L
     private var rotationKeyRequested = false
-    @Volatile
-    private var failed = false
+    @Volatile private var failed = false
 
     override fun startRecordImp(path: String, listener: RecordController.Listener?, tracks: RecordController.RecordTracks) {
         // The path is only a label: every segment's file comes from the sink.
@@ -71,12 +68,13 @@ internal class SegmentedMp4RecordController(
     private fun openNextSegment() {
         val index = segmentIndex + 1
         val descriptor = sink.open(index) ?: throw IOException("Could not create video segment $index")
-        val next = try {
-            MediaMuxer(descriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        } catch (error: Exception) {
-            sink.close(index, 0, playable = false)
-            throw IOException("Could not open MP4 muxer for segment $index", error)
-        }
+        val next =
+            try {
+                MediaMuxer(descriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            } catch (error: Exception) {
+                sink.close(index, 0, playable = false)
+                throw IOException("Could not open MP4 muxer for segment $index", error)
+            }
         segmentIndex = index
         muxer = next
         muxerStarted = false
@@ -134,7 +132,8 @@ internal class SegmentedMp4RecordController(
         if (failed) return
         failed = true
         Log.e(TAG, "Video recording failed", error)
-        // The owner stops recording from its own thread; stopping from this coroutine would deadlock.
+        // The owner stops recording from its own thread; stopping from this coroutine would
+        // deadlock.
         listener?.onError(error)
     }
 
@@ -142,8 +141,7 @@ internal class SegmentedMp4RecordController(
         if (failed) return
         when (frame.type) {
             MediaFrame.Type.VIDEO -> {
-                val keyframe = frame.info.isKeyFrame ||
-                    (frame.info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0 || isKeyFrame(frame.data)
+                val keyframe = frame.info.isKeyFrame || (frame.info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0 || isKeyFrame(frame.data)
                 val timestamp = frame.info.timestamp
                 when (recordStatus) {
                     RecordController.Status.STARTED -> {
@@ -154,10 +152,11 @@ internal class SegmentedMp4RecordController(
                             myRequestKeyFrame?.onRequestKeyFrame()
                         }
                     }
-                    RecordController.Status.RESUMED -> if (keyframe) {
-                        recordStatus = RecordController.Status.RECORDING
-                        listener?.onStatusChange(recordStatus)
-                    }
+                    RecordController.Status.RESUMED ->
+                        if (keyframe) {
+                            recordStatus = RecordController.Status.RECORDING
+                            listener?.onStatusChange(recordStatus)
+                        }
                     else -> Unit
                 }
                 if (recordStatus != RecordController.Status.RECORDING || !muxerStarted) return
@@ -177,7 +176,8 @@ internal class SegmentedMp4RecordController(
             MediaFrame.Type.AUDIO -> {
                 if (recordStatus != RecordController.Status.RECORDING || !muxerStarted) return
                 val timestamp = frame.info.timestamp
-                // Audio encoded before this segment's first keyframe already went to the previous one.
+                // Audio encoded before this segment's first keyframe already went to the previous
+                // one.
                 if (timestamp < segmentStartUs || timestamp <= lastAudioUs) return
                 write(audioTrack, frame, timestamp)
                 lastAudioUs = timestamp
@@ -188,9 +188,7 @@ internal class SegmentedMp4RecordController(
     private fun write(track: Int, frame: MediaFrame, timestampUs: Long) {
         val active = muxer ?: return
         if (track < 0) return
-        val info = MediaCodec.BufferInfo().apply {
-            set(frame.info.offset, frame.info.size, timestampUs - segmentStartUs, frame.info.flags)
-        }
+        val info = MediaCodec.BufferInfo().apply { set(frame.info.offset, frame.info.size, timestampUs - segmentStartUs, frame.info.flags) }
         try {
             active.writeSampleData(track, frame.data, info)
         } catch (error: Exception) {

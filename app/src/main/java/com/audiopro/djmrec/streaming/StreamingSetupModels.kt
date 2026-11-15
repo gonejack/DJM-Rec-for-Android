@@ -22,26 +22,17 @@ data class StreamCredentials(
     val shareUrl: String? = null
 )
 
-class YouTubeLiveSession internal constructor(
-    accessToken: String,
-    val broadcastId: String,
-    val streamId: String
-) {
+class YouTubeLiveSession internal constructor(accessToken: String, val broadcastId: String, val streamId: String) {
     /** Refreshed in place on HTTP 401 via [StreamingSetupRepository.accessTokenRefresher]. */
-    @Volatile
-    internal var accessToken: String = accessToken
+    @Volatile internal var accessToken: String = accessToken
 
     val studioUrl: String = "https://studio.youtube.com/video/$broadcastId/livestreaming"
     val watchUrl: String = "https://www.youtube.com/watch?v=$broadcastId"
 
-    override fun toString(): String =
-        "YouTubeLiveSession(broadcastId=$broadcastId, streamId=$streamId, accessToken=***)"
+    override fun toString(): String = "YouTubeLiveSession(broadcastId=$broadcastId, streamId=$streamId, accessToken=***)"
 }
 
-data class PreparedYouTubeLive(
-    val credentials: StreamCredentials,
-    val session: YouTubeLiveSession
-)
+data class PreparedYouTubeLive(val credentials: StreamCredentials, val session: YouTubeLiveSession)
 
 enum class YouTubeFinishResult {
     COMPLETED,
@@ -49,11 +40,7 @@ enum class YouTubeFinishResult {
 }
 
 /** Snapshot of a live broadcast's audience and YouTube-reported ingest health. */
-data class YouTubeLiveStats(
-    val concurrentViewers: Int?,
-    val healthLabel: String?,
-    val healthIssues: List<String>
-)
+data class YouTubeLiveStats(val concurrentViewers: Int?, val healthLabel: String?, val healthIssues: List<String>)
 
 enum class YouTubeBroadcastStatus {
     IDLE,

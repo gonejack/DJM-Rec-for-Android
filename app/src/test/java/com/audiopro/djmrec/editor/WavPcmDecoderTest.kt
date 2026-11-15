@@ -9,16 +9,36 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class WavPcmDecoderTest {
-    private fun wav(format: Int, bits: Int, channels: Int, rate: Int, data: ByteArray, dataSize: Long = data.size.toLong(),
-                    extraChunk: Boolean = false): ByteArray {
+    private fun wav(
+        format: Int,
+        bits: Int,
+        channels: Int,
+        rate: Int,
+        data: ByteArray,
+        dataSize: Long = data.size.toLong(),
+        extraChunk: Boolean = false
+    ): ByteArray {
         val out = ByteArrayOutputStream()
         fun u32(v: Long) = out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(v.toInt()).array())
         fun u16(v: Int) = out.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(v.toShort()).array())
-        out.write("RIFF".toByteArray()); u32(0); out.write("WAVE".toByteArray())
-        if (extraChunk) { out.write("LIST".toByteArray()); u32(3); out.write(byteArrayOf(1, 2, 3, 0)) }
-        out.write("fmt ".toByteArray()); u32(16)
-        u16(format); u16(channels); u32(rate.toLong()); u32((rate * channels * bits / 8).toLong()); u16(channels * bits / 8); u16(bits)
-        out.write("data".toByteArray()); u32(dataSize)
+        out.write("RIFF".toByteArray())
+        u32(0)
+        out.write("WAVE".toByteArray())
+        if (extraChunk) {
+            out.write("LIST".toByteArray())
+            u32(3)
+            out.write(byteArrayOf(1, 2, 3, 0))
+        }
+        out.write("fmt ".toByteArray())
+        u32(16)
+        u16(format)
+        u16(channels)
+        u32(rate.toLong())
+        u32((rate * channels * bits / 8).toLong())
+        u16(channels * bits / 8)
+        u16(bits)
+        out.write("data".toByteArray())
+        u32(dataSize)
         out.write(data)
         return out.toByteArray()
     }

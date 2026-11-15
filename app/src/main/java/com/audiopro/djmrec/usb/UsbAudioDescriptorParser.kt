@@ -1,14 +1,11 @@
 package com.audiopro.djmrec.usb
 
 /**
- * Minimal, spec-accurate walker over the raw USB configuration descriptor blob returned by
- * [android.hardware.usb.UsbDeviceConnection.getRawDescriptors]. We only need this to answer
- * "which alternate setting is the real audio streaming interface, and what does it advertise
- * (channels / bit depth / iso endpoint)?". The selected interface can be captured through
- * raw libusb isochronous transfers; ordinary system-routed inputs may use AAudio/Oboe.
+ * Minimal, spec-accurate walker over the raw USB configuration descriptor blob returned by [android.hardware.usb.UsbDeviceConnection.getRawDescriptors]. We
+ * only need this to answer "which alternate setting is the real audio streaming interface, and what does it advertise (channels / bit depth / iso endpoint)?".
+ * The selected interface can be captured through raw libusb isochronous transfers; ordinary system-routed inputs may use AAudio/Oboe.
  *
- * Reference: USB Audio Class 2.0 spec, sections 4.9 (AudioStreaming Interface) and
- * Format Type I Descriptor (Frmts20 spec, table 2-1).
+ * Reference: USB Audio Class 2.0 spec, sections 4.9 (AudioStreaming Interface) and Format Type I Descriptor (Frmts20 spec, table 2-1).
  */
 object UsbAudioDescriptorParser {
 
@@ -41,15 +38,11 @@ object UsbAudioDescriptorParser {
     private const val ENDPOINT_ATTR_TRANSFER_TYPE_MASK = 0x03
     private const val ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS = 0x01
 
-    private fun byteAt(bytes: ByteArray, index: Int): Int =
-        if (index in bytes.indices) bytes[index].toInt() and 0xFF else 0
+    private fun byteAt(bytes: ByteArray, index: Int): Int = if (index in bytes.indices) bytes[index].toInt() and 0xFF else 0
 
-    private fun le16(bytes: ByteArray, index: Int): Int =
-        byteAt(bytes, index) or (byteAt(bytes, index + 1) shl 8)
+    private fun le16(bytes: ByteArray, index: Int): Int = byteAt(bytes, index) or (byteAt(bytes, index + 1) shl 8)
 
-    private fun le24(bytes: ByteArray, index: Int): Int =
-        byteAt(bytes, index) or (byteAt(bytes, index + 1) shl 8) or
-            (byteAt(bytes, index + 2) shl 16)
+    private fun le24(bytes: ByteArray, index: Int): Int = byteAt(bytes, index) or (byteAt(bytes, index + 1) shl 8) or (byteAt(bytes, index + 2) shl 16)
 
     private fun le32(bytes: ByteArray, index: Int): Long =
         byteAt(bytes, index).toLong() or
@@ -84,147 +77,151 @@ object UsbAudioDescriptorParser {
                     currentInterfaceNumber = byteAt(rawDescriptors, offset + 2)
                     currentClass = byteAt(rawDescriptors, offset + 5)
                     currentSubclass = byteAt(rawDescriptors, offset + 6)
-                    currentAudioClassVersion = when (byteAt(rawDescriptors, offset + 7)) {
-                        0x20 -> 0x0200
-                        0x00 -> 0x0100
-                        else -> 0
-                    }
+                    currentAudioClassVersion =
+                        when (byteAt(rawDescriptors, offset + 7)) {
+                            0x20 -> 0x0200
+                            0x00 -> 0x0100
+                            else -> 0
+                        }
                 }
 
-                DT_CS_INTERFACE -> if (currentClass == USB_CLASS_AUDIO) {
-                    val subtype = byteAt(rawDescriptors, offset + 2)
-                    if (currentSubclass == SUBCLASS_AUDIOCONTROL) {
-                        when (subtype) {
-                            AC_DESCRIPTOR_SUBTYPE_HEADER -> {
-                                currentAudioClassVersion = le16(rawDescriptors, offset + 3)
-                                val controlInterface = AudioControlInterface(
-                                    currentInterfaceNumber,
-                                    if (currentAudioClassVersion >= 0x0200) {
-                                        le16(rawDescriptors, offset + 6)
-                                    } else {
-                                        le16(rawDescriptors, offset + 5)
-                                    },
-                                    currentAudioClassVersion
-                                )
-                                audioControlInterfaces += controlInterface
-                                if (audioControlInterface == null) {
-                                    audioControlInterface = controlInterface
+                DT_CS_INTERFACE ->
+                    if (currentClass == USB_CLASS_AUDIO) {
+                        val subtype = byteAt(rawDescriptors, offset + 2)
+                        if (currentSubclass == SUBCLASS_AUDIOCONTROL) {
+                            when (subtype) {
+                                AC_DESCRIPTOR_SUBTYPE_HEADER -> {
+                                    currentAudioClassVersion = le16(rawDescriptors, offset + 3)
+                                    val controlInterface =
+                                        AudioControlInterface(
+                                            currentInterfaceNumber,
+                                            if (currentAudioClassVersion >= 0x0200) {
+                                                le16(rawDescriptors, offset + 6)
+                                            } else {
+                                                le16(rawDescriptors, offset + 5)
+                                            },
+                                            currentAudioClassVersion)
+                                    audioControlInterfaces += controlInterface
+                                    if (audioControlInterface == null) {
+                                        audioControlInterface = controlInterface
+                                    }
                                 }
-                            }
 
-                            AC_DESCRIPTOR_SUBTYPE_INPUT_TERMINAL -> if (length >= 17) {
-                                inputTerminals += TerminalInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    terminalType = le16(rawDescriptors, offset + 4),
-                                    sourceId = 0,
-                                    clockSourceId = byteAt(rawDescriptors, offset + 7),
-                                    channelCount = byteAt(rawDescriptors, offset + 8),
-                                    channelConfig = le32(rawDescriptors, offset + 9),
-                                    nameStringIndex = byteAt(rawDescriptors, offset + 13)
-                                )
-                            }
+                                AC_DESCRIPTOR_SUBTYPE_INPUT_TERMINAL ->
+                                    if (length >= 17) {
+                                        inputTerminals +=
+                                            TerminalInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                terminalType = le16(rawDescriptors, offset + 4),
+                                                sourceId = 0,
+                                                clockSourceId = byteAt(rawDescriptors, offset + 7),
+                                                channelCount = byteAt(rawDescriptors, offset + 8),
+                                                channelConfig = le32(rawDescriptors, offset + 9),
+                                                nameStringIndex = byteAt(rawDescriptors, offset + 13))
+                                    }
 
-                            AC_DESCRIPTOR_SUBTYPE_OUTPUT_TERMINAL -> if (length >= 12) {
-                                outputTerminals += TerminalInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    terminalType = le16(rawDescriptors, offset + 4),
-                                    sourceId = byteAt(rawDescriptors, offset + 7),
-                                    clockSourceId = byteAt(rawDescriptors, offset + 8),
-                                    channelCount = 0,
-                                    channelConfig = 0,
-                                    nameStringIndex = byteAt(rawDescriptors, offset + 11)
-                                )
-                            }
+                                AC_DESCRIPTOR_SUBTYPE_OUTPUT_TERMINAL ->
+                                    if (length >= 12) {
+                                        outputTerminals +=
+                                            TerminalInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                terminalType = le16(rawDescriptors, offset + 4),
+                                                sourceId = byteAt(rawDescriptors, offset + 7),
+                                                clockSourceId = byteAt(rawDescriptors, offset + 8),
+                                                channelCount = 0,
+                                                channelConfig = 0,
+                                                nameStringIndex = byteAt(rawDescriptors, offset + 11))
+                                    }
 
-                            AC_DESCRIPTOR_SUBTYPE_MIXER_UNIT -> if (length >= 6) {
-                                val inputCount = byteAt(rawDescriptors, offset + 4)
-                                val sourceStart = offset + 5
-                                val sourceIds = (0 until inputCount).map { byteAt(rawDescriptors, sourceStart + it) }
-                                val outputCountIndex = sourceStart + inputCount
-                                val outputCount = byteAt(rawDescriptors, outputCountIndex)
-                                val controlStart = outputCountIndex + 1
-                                val controlBytes = (length - (controlStart - offset) - 1).coerceAtLeast(0)
-                                mixerUnits += MixerUnitInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    sourceIds = sourceIds,
-                                    outputChannelCount = outputCount,
-                                    controls = (0 until controlBytes).map { byteAt(rawDescriptors, controlStart + it) },
-                                    nameStringIndex = byteAt(rawDescriptors, offset + length - 1)
-                                )
-                            }
+                                AC_DESCRIPTOR_SUBTYPE_MIXER_UNIT ->
+                                    if (length >= 6) {
+                                        val inputCount = byteAt(rawDescriptors, offset + 4)
+                                        val sourceStart = offset + 5
+                                        val sourceIds = (0 until inputCount).map { byteAt(rawDescriptors, sourceStart + it) }
+                                        val outputCountIndex = sourceStart + inputCount
+                                        val outputCount = byteAt(rawDescriptors, outputCountIndex)
+                                        val controlStart = outputCountIndex + 1
+                                        val controlBytes = (length - (controlStart - offset) - 1).coerceAtLeast(0)
+                                        mixerUnits +=
+                                            MixerUnitInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                sourceIds = sourceIds,
+                                                outputChannelCount = outputCount,
+                                                controls = (0 until controlBytes).map { byteAt(rawDescriptors, controlStart + it) },
+                                                nameStringIndex = byteAt(rawDescriptors, offset + length - 1))
+                                    }
 
-                            AC_DESCRIPTOR_SUBTYPE_SELECTOR_UNIT -> if (length >= 6) {
-                                val inputCount = byteAt(rawDescriptors, offset + 4)
-                                val sourceStart = offset + 5
-                                val controlIndex = sourceStart + inputCount
-                                selectorUnits += SelectorUnitInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    sourceIds = (0 until inputCount).map { byteAt(rawDescriptors, sourceStart + it) },
-                                    controls = byteAt(rawDescriptors, controlIndex),
-                                    nameStringIndex = byteAt(rawDescriptors, offset + length - 1)
-                                )
-                            }
+                                AC_DESCRIPTOR_SUBTYPE_SELECTOR_UNIT ->
+                                    if (length >= 6) {
+                                        val inputCount = byteAt(rawDescriptors, offset + 4)
+                                        val sourceStart = offset + 5
+                                        val controlIndex = sourceStart + inputCount
+                                        selectorUnits +=
+                                            SelectorUnitInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                sourceIds = (0 until inputCount).map { byteAt(rawDescriptors, sourceStart + it) },
+                                                controls = byteAt(rawDescriptors, controlIndex),
+                                                nameStringIndex = byteAt(rawDescriptors, offset + length - 1))
+                                    }
 
-                            AC_DESCRIPTOR_SUBTYPE_FEATURE_UNIT -> if (length >= 10) {
-                                val controlBytes = (length - 6).coerceAtLeast(0)
-                                val controls = (0 until (controlBytes / 4)).map { index ->
-                                    byteAt(rawDescriptors, offset + 5 + index * 4) or
-                                        (byteAt(rawDescriptors, offset + 6 + index * 4) shl 8) or
-                                        (byteAt(rawDescriptors, offset + 7 + index * 4) shl 16) or
-                                        (byteAt(rawDescriptors, offset + 8 + index * 4) shl 24)
+                                AC_DESCRIPTOR_SUBTYPE_FEATURE_UNIT ->
+                                    if (length >= 10) {
+                                        val controlBytes = (length - 6).coerceAtLeast(0)
+                                        val controls =
+                                            (0 until (controlBytes / 4)).map { index ->
+                                                byteAt(rawDescriptors, offset + 5 + index * 4) or
+                                                    (byteAt(rawDescriptors, offset + 6 + index * 4) shl 8) or
+                                                    (byteAt(rawDescriptors, offset + 7 + index * 4) shl 16) or
+                                                    (byteAt(rawDescriptors, offset + 8 + index * 4) shl 24)
+                                            }
+                                        featureUnits +=
+                                            FeatureUnitInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                sourceId = byteAt(rawDescriptors, offset + 4),
+                                                controls = controls,
+                                                nameStringIndex = byteAt(rawDescriptors, offset + length - 1))
+                                    }
+
+                                AC_DESCRIPTOR_SUBTYPE_CLOCK_SOURCE ->
+                                    if (currentAudioClassVersion >= 0x0200 && length >= 8) {
+                                        val controls = byteAt(rawDescriptors, offset + 5)
+                                        clockSources +=
+                                            ClockSourceInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                interfaceNumber = currentInterfaceNumber,
+                                                attributes = byteAt(rawDescriptors, offset + 4),
+                                                controls = controls,
+                                                associatedTerminalId = byteAt(rawDescriptors, offset + 6),
+                                                nameStringIndex = byteAt(rawDescriptors, offset + 7),
+                                                supportsFrequencyControl = (controls and UAC2_CLOCK_CONTROL_FREQUENCY_MASK) in 0x01..0x03,
+                                                supportsFrequencySet =
+                                                    (controls and UAC2_CLOCK_CONTROL_FREQUENCY_MASK) == UAC2_CLOCK_CONTROL_FREQUENCY_PROGRAMMABLE)
+                                    }
+
+                                AC_DESCRIPTOR_SUBTYPE_CLOCK_SELECTOR ->
+                                    if (currentAudioClassVersion >= 0x0200 && length >= 7) {
+                                        val inputCount = byteAt(rawDescriptors, offset + 4)
+                                        val sourceStart = offset + 5
+                                        val controlIndex = sourceStart + inputCount
+                                        clockSelectors +=
+                                            ClockSelectorInfo(
+                                                id = byteAt(rawDescriptors, offset + 3),
+                                                sourceIds = (0 until inputCount).map { byteAt(rawDescriptors, sourceStart + it) },
+                                                controls = byteAt(rawDescriptors, controlIndex),
+                                                nameStringIndex = byteAt(rawDescriptors, offset + length - 1))
+                                    }
+                            }
+                        } else if (currentSubclass == SUBCLASS_AUDIOSTREAMING && subtype == AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE) {
+                            val formatType = byteAt(rawDescriptors, offset + 3)
+                            val rateCount = byteAt(rawDescriptors, offset + 7)
+                            if (currentAudioClassVersion < 0x0200 && formatType == 0x01 && length >= 8 && rateCount > 0) {
+                                for (index in 0 until minOf(rateCount, (length - 8) / 3)) {
+                                    val rate = le24(rawDescriptors, offset + 8 + index * 3)
+                                    if (rate > 0) descriptorRates += rate
                                 }
-                                featureUnits += FeatureUnitInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    sourceId = byteAt(rawDescriptors, offset + 4),
-                                    controls = controls,
-                                    nameStringIndex = byteAt(rawDescriptors, offset + length - 1)
-                                )
-                            }
-
-                            AC_DESCRIPTOR_SUBTYPE_CLOCK_SOURCE -> if (
-                                currentAudioClassVersion >= 0x0200 && length >= 8
-                            ) {
-                                val controls = byteAt(rawDescriptors, offset + 5)
-                                clockSources += ClockSourceInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    interfaceNumber = currentInterfaceNumber,
-                                    attributes = byteAt(rawDescriptors, offset + 4),
-                                    controls = controls,
-                                    associatedTerminalId = byteAt(rawDescriptors, offset + 6),
-                                    nameStringIndex = byteAt(rawDescriptors, offset + 7),
-                                    supportsFrequencyControl =
-                                        (controls and UAC2_CLOCK_CONTROL_FREQUENCY_MASK) in 0x01..0x03,
-                                    supportsFrequencySet =
-                                        (controls and UAC2_CLOCK_CONTROL_FREQUENCY_MASK) ==
-                                            UAC2_CLOCK_CONTROL_FREQUENCY_PROGRAMMABLE
-                                )
-                            }
-
-                            AC_DESCRIPTOR_SUBTYPE_CLOCK_SELECTOR -> if (
-                                currentAudioClassVersion >= 0x0200 && length >= 7
-                            ) {
-                                val inputCount = byteAt(rawDescriptors, offset + 4)
-                                val sourceStart = offset + 5
-                                val controlIndex = sourceStart + inputCount
-                                clockSelectors += ClockSelectorInfo(
-                                    id = byteAt(rawDescriptors, offset + 3),
-                                    sourceIds = (0 until inputCount).map { byteAt(rawDescriptors, sourceStart + it) },
-                                    controls = byteAt(rawDescriptors, controlIndex),
-                                    nameStringIndex = byteAt(rawDescriptors, offset + length - 1)
-                                )
-                            }
-                        }
-                    } else if (currentSubclass == SUBCLASS_AUDIOSTREAMING && subtype == AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE) {
-                        val formatType = byteAt(rawDescriptors, offset + 3)
-                        val rateCount = byteAt(rawDescriptors, offset + 7)
-                        if (currentAudioClassVersion < 0x0200 && formatType == 0x01 && length >= 8 && rateCount > 0) {
-                            for (index in 0 until minOf(rateCount, (length - 8) / 3)) {
-                                val rate = le24(rawDescriptors, offset + 8 + index * 3)
-                                if (rate > 0) descriptorRates += rate
                             }
                         }
                     }
-                }
             }
             offset += length
         }
@@ -240,14 +237,12 @@ object UsbAudioDescriptorParser {
             selectorUnits = selectorUnits,
             inputTerminals = inputTerminals,
             outputTerminals = outputTerminals,
-            descriptorSampleRates = descriptorRates.toList()
-        )
+            descriptorSampleRates = descriptorRates.toList())
     }
 
     /**
-     * Walks the whole configuration descriptor and returns every AudioStreaming (AS) interface
-     * alternate-setting that exposes an isochronous IN endpoint, i.e. every candidate capture
-     * format the mixer offers (e.g. 48kHz/24-bit, 96kHz/24-bit, etc.).
+     * Walks the whole configuration descriptor and returns every AudioStreaming (AS) interface alternate-setting that exposes an isochronous IN endpoint, i.e.
+     * every candidate capture format the mixer offers (e.g. 48kHz/24-bit, 96kHz/24-bit, etc.).
      */
     internal fun findAudioStreamingInterfaces(rawDescriptors: ByteArray): List<AudioStreamingInterfaceInfo> {
         val results = mutableListOf<AudioStreamingInterfaceInfo>()
@@ -269,8 +264,7 @@ object UsbAudioDescriptorParser {
         var pendingSampleRates: List<Int> = emptyList()
 
         fun flushInterfaceIfComplete() {
-            if (currentIsAudioStreaming && isPcm && currentInterfaceNumber >= 0 &&
-                pendingSubframeSize > 0 && pendingIsoInEndpoint != null) {
+            if (currentIsAudioStreaming && isPcm && currentInterfaceNumber >= 0 && pendingSubframeSize > 0 && pendingIsoInEndpoint != null) {
                 results.add(
                     AudioStreamingInterfaceInfo(
                         interfaceNumber = currentInterfaceNumber,
@@ -283,9 +277,7 @@ object UsbAudioDescriptorParser {
                         isochronousInMaxPacketSize = pendingIsoInMaxPacketSize,
                         isochronousFeedbackEndpointAddress = pendingIsoFeedbackEndpoint,
                         isochronousFeedbackMaxPacketSize = pendingIsoFeedbackMaxPacketSize,
-                        sampleRates = pendingSampleRates
-                    )
-                )
+                        sampleRates = pendingSampleRates))
             }
         }
 
@@ -295,7 +287,8 @@ object UsbAudioDescriptorParser {
             val bDescriptorType = rawDescriptors[offset + 1].toInt() and 0xFF
             if ((bDescriptorType == DT_INTERFACE && bLength < 9) ||
                 (bDescriptorType == DT_ENDPOINT && bLength < 7) ||
-                (bDescriptorType == DT_CS_INTERFACE && bLength < 3)) break
+                (bDescriptorType == DT_CS_INTERFACE && bLength < 3))
+                break
 
             when (bDescriptorType) {
                 DT_INTERFACE -> {
@@ -309,8 +302,7 @@ object UsbAudioDescriptorParser {
                     val interfaceClass = rawDescriptors[offset + 5].toInt() and 0xFF
                     val interfaceSubClass = rawDescriptors[offset + 6].toInt() and 0xFF
                     isUac2 = (rawDescriptors[offset + 7].toInt() and 0xFF) == 0x20
-                    currentIsAudioStreaming =
-                        interfaceClass == USB_CLASS_AUDIO && interfaceSubClass == SUBCLASS_AUDIOSTREAMING
+                    currentIsAudioStreaming = interfaceClass == USB_CLASS_AUDIO && interfaceSubClass == SUBCLASS_AUDIOSTREAMING
 
                     currentChannelCount = 0
                     isPcm = false
@@ -324,72 +316,71 @@ object UsbAudioDescriptorParser {
                     pendingSampleRates = emptyList()
                 }
 
-                DT_CS_INTERFACE -> if (currentIsAudioStreaming) {
-                    val subtype = rawDescriptors[offset + 2].toInt() and 0xFF
-                    when (subtype) {
-                        AS_DESCRIPTOR_SUBTYPE_GENERAL -> {
-                            // UAC2 Class-Specific AS Interface Descriptor:
-                            // ... 4 bmControls,5 bFormatType,6..9 bmFormats,10 bNrChannels
-                            if (isUac2 && bLength >= 16) {
-                                isPcm = (le32(rawDescriptors, offset + 6) and 1L) != 0L
-                                currentTerminalLink = rawDescriptors[offset + 3].toInt() and 0xFF
-                                currentChannelCount = rawDescriptors[offset + 10].toInt() and 0xFF
-                            } else if (!isUac2 && bLength >= 7) {
-                                isPcm = le16(rawDescriptors, offset + 5) == 1
-                                currentTerminalLink = byteAt(rawDescriptors, offset + 3)
+                DT_CS_INTERFACE ->
+                    if (currentIsAudioStreaming) {
+                        val subtype = rawDescriptors[offset + 2].toInt() and 0xFF
+                        when (subtype) {
+                            AS_DESCRIPTOR_SUBTYPE_GENERAL -> {
+                                // UAC2 Class-Specific AS Interface Descriptor:
+                                // ... 4 bmControls,5 bFormatType,6..9 bmFormats,10 bNrChannels
+                                if (isUac2 && bLength >= 16) {
+                                    isPcm = (le32(rawDescriptors, offset + 6) and 1L) != 0L
+                                    currentTerminalLink = rawDescriptors[offset + 3].toInt() and 0xFF
+                                    currentChannelCount = rawDescriptors[offset + 10].toInt() and 0xFF
+                                } else if (!isUac2 && bLength >= 7) {
+                                    isPcm = le16(rawDescriptors, offset + 5) == 1
+                                    currentTerminalLink = byteAt(rawDescriptors, offset + 3)
+                                }
                             }
-                        }
 
-                        AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE -> {
-                            // UAC2 Format Type I Descriptor:
-                            // 3 bFormatType, 4 bSubslotSize, 5 bBitResolution
-                            if (isUac2 && bLength >= 6 && byteAt(rawDescriptors, offset + 3) == 1) {
-                                pendingSubframeSize = rawDescriptors[offset + 4].toInt() and 0xFF
-                                pendingBitResolution = rawDescriptors[offset + 5].toInt() and 0xFF
-                            } else if (!isUac2 && bLength >= 8 && byteAt(rawDescriptors, offset + 3) == 1) {
-                                currentChannelCount = byteAt(rawDescriptors, offset + 4)
-                                pendingSubframeSize = byteAt(rawDescriptors, offset + 5)
-                                pendingBitResolution = byteAt(rawDescriptors, offset + 6)
-                                val count = byteAt(rawDescriptors, offset + 7)
-                                pendingSampleRates = if (count == 0 && bLength >= 14) {
-                                    CaptureFormatPolicy.ratesInRange(le24(rawDescriptors, offset + 8), le24(rawDescriptors, offset + 11), 0)
-                                } else if (count > 0 && bLength >= 8 + count * 3) {
-                                    List(count) { le24(rawDescriptors, offset + 8 + it * 3) }.filter { it in 1..384_000 }
-                                } else emptyList()
+                            AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE -> {
+                                // UAC2 Format Type I Descriptor:
+                                // 3 bFormatType, 4 bSubslotSize, 5 bBitResolution
+                                if (isUac2 && bLength >= 6 && byteAt(rawDescriptors, offset + 3) == 1) {
+                                    pendingSubframeSize = rawDescriptors[offset + 4].toInt() and 0xFF
+                                    pendingBitResolution = rawDescriptors[offset + 5].toInt() and 0xFF
+                                } else if (!isUac2 && bLength >= 8 && byteAt(rawDescriptors, offset + 3) == 1) {
+                                    currentChannelCount = byteAt(rawDescriptors, offset + 4)
+                                    pendingSubframeSize = byteAt(rawDescriptors, offset + 5)
+                                    pendingBitResolution = byteAt(rawDescriptors, offset + 6)
+                                    val count = byteAt(rawDescriptors, offset + 7)
+                                    pendingSampleRates =
+                                        if (count == 0 && bLength >= 14) {
+                                            CaptureFormatPolicy.ratesInRange(le24(rawDescriptors, offset + 8), le24(rawDescriptors, offset + 11), 0)
+                                        } else if (count > 0 && bLength >= 8 + count * 3) {
+                                            List(count) { le24(rawDescriptors, offset + 8 + it * 3) }.filter { it in 1..384_000 }
+                                        } else emptyList()
+                                }
                             }
                         }
                     }
-                }
 
-                DT_ENDPOINT -> if (currentIsAudioStreaming) {
-                    // Standard Endpoint Descriptor:
-                    // 2 bEndpointAddress, 3 bmAttributes, 4-5 wMaxPacketSize (LE; bits 0-10 are
-                    // the actual size, bits 11-12 are extra high-speed-only transactions/uframe,
-                    // which we don't need to mask off separately since UAC2 iso IN endpoints on
-                    // full/high-speed Android hosts don't use them here).
-                    val address = rawDescriptors[offset + 2].toInt() and 0xFF
-                    val attributes = rawDescriptors[offset + 3].toInt() and 0xFF
-                    val isIn = (address and ENDPOINT_DIR_IN_MASK) != 0
-                    val isIsochronous =
-                        (attributes and ENDPOINT_ATTR_TRANSFER_TYPE_MASK) == ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
-                    if (isIn && isIsochronous && ((attributes shr 4) and 0x03) != 0x01) {
-                        pendingIsoInEndpoint = address
-                        if (offset + 5 < rawDescriptors.size) {
-                            val wMaxPacketSizeRaw =
-                                (rawDescriptors[offset + 4].toInt() and 0xFF) or
-                                    ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
-                            pendingIsoInMaxPacketSize = wMaxPacketSizeRaw and 0x7FF
-                        }
-                    } else if (isIsochronous && ((attributes shr 4) and 0x03) == 0x01) {
-                        pendingIsoFeedbackEndpoint = address
-                        if (offset + 5 < rawDescriptors.size) {
-                            val wMaxPacketSizeRaw =
-                                (rawDescriptors[offset + 4].toInt() and 0xFF) or
-                                    ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
-                            pendingIsoFeedbackMaxPacketSize = wMaxPacketSizeRaw and 0x7FF
+                DT_ENDPOINT ->
+                    if (currentIsAudioStreaming) {
+                        // Standard Endpoint Descriptor:
+                        // 2 bEndpointAddress, 3 bmAttributes, 4-5 wMaxPacketSize (LE; bits 0-10 are
+                        // the actual size, bits 11-12 are extra high-speed-only
+                        // transactions/uframe,
+                        // which we don't need to mask off separately since UAC2 iso IN endpoints on
+                        // full/high-speed Android hosts don't use them here).
+                        val address = rawDescriptors[offset + 2].toInt() and 0xFF
+                        val attributes = rawDescriptors[offset + 3].toInt() and 0xFF
+                        val isIn = (address and ENDPOINT_DIR_IN_MASK) != 0
+                        val isIsochronous = (attributes and ENDPOINT_ATTR_TRANSFER_TYPE_MASK) == ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
+                        if (isIn && isIsochronous && ((attributes shr 4) and 0x03) != 0x01) {
+                            pendingIsoInEndpoint = address
+                            if (offset + 5 < rawDescriptors.size) {
+                                val wMaxPacketSizeRaw = (rawDescriptors[offset + 4].toInt() and 0xFF) or ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
+                                pendingIsoInMaxPacketSize = wMaxPacketSizeRaw and 0x7FF
+                            }
+                        } else if (isIsochronous && ((attributes shr 4) and 0x03) == 0x01) {
+                            pendingIsoFeedbackEndpoint = address
+                            if (offset + 5 < rawDescriptors.size) {
+                                val wMaxPacketSizeRaw = (rawDescriptors[offset + 4].toInt() and 0xFF) or ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
+                                pendingIsoFeedbackMaxPacketSize = wMaxPacketSizeRaw and 0x7FF
+                            }
                         }
                     }
-                }
             }
 
             offset += bLength
@@ -400,19 +391,12 @@ object UsbAudioDescriptorParser {
     }
 
     /**
-     * Scans one exact (interfaceNumber, alternateSetting) pair for its isochronous IN endpoint,
-     * ignoring the interface's declared class entirely -- unlike [findAudioStreamingInterfaces],
-     * which only considers class=1/subclass=2 (standard USB Audio Class) interfaces. This exists
-     * for mixers (confirmed: DJM-900NXS2) whose audio-carrying interface is declared as
-     * USB_CLASS_VENDOR_SPEC (255) instead, so it never has CS_INTERFACE AS_GENERAL/FORMAT_TYPE
-     * descriptors to read channel count / bit resolution from -- callers must supply those from
-     * a [PioneerMixerProfile] vendor-capture override instead.
+     * Scans one exact (interfaceNumber, alternateSetting) pair for its isochronous IN endpoint, ignoring the interface's declared class entirely -- unlike
+     * [findAudioStreamingInterfaces], which only considers class=1/subclass=2 (standard USB Audio Class) interfaces. This exists for mixers (confirmed:
+     * DJM-900NXS2) whose audio-carrying interface is declared as USB_CLASS_VENDOR_SPEC (255) instead, so it never has CS_INTERFACE AS_GENERAL/FORMAT_TYPE
+     * descriptors to read channel count / bit resolution from -- callers must supply those from a [PioneerMixerProfile] vendor-capture override instead.
      */
-    internal fun findVendorEndpoint(
-        rawDescriptors: ByteArray,
-        interfaceNumber: Int,
-        alternateSetting: Int
-    ): AudioStreamingInterfaceInfo? {
+    internal fun findVendorEndpoint(rawDescriptors: ByteArray, interfaceNumber: Int, alternateSetting: Int): AudioStreamingInterfaceInfo? {
         var offset = 0
         var currentInterfaceNumber = -1
         var currentAlternateSetting = -1
@@ -428,36 +412,34 @@ object UsbAudioDescriptorParser {
             val bDescriptorType = rawDescriptors[offset + 1].toInt() and 0xFF
             if ((bDescriptorType == DT_INTERFACE && bLength < 9) ||
                 (bDescriptorType == DT_ENDPOINT && bLength < 7) ||
-                (bDescriptorType == DT_CS_INTERFACE && bLength < 3)) break
+                (bDescriptorType == DT_CS_INTERFACE && bLength < 3))
+                break
 
             when (bDescriptorType) {
                 DT_INTERFACE -> {
                     currentInterfaceNumber = rawDescriptors[offset + 2].toInt() and 0xFF
                     currentAlternateSetting = rawDescriptors[offset + 3].toInt() and 0xFF
-                    inTargetInterface =
-                        currentInterfaceNumber == interfaceNumber && currentAlternateSetting == alternateSetting
+                    inTargetInterface = currentInterfaceNumber == interfaceNumber && currentAlternateSetting == alternateSetting
                 }
 
-                DT_ENDPOINT -> if (inTargetInterface) {
-                    val address = rawDescriptors[offset + 2].toInt() and 0xFF
-                    val attributes = rawDescriptors[offset + 3].toInt() and 0xFF
-                    val isIn = (address and ENDPOINT_DIR_IN_MASK) != 0
-                    val isIsochronous =
-                        (attributes and ENDPOINT_ATTR_TRANSFER_TYPE_MASK) == ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
-                    if (offset + 5 < rawDescriptors.size) {
-                        val wMaxPacketSizeRaw =
-                            (rawDescriptors[offset + 4].toInt() and 0xFF) or
-                                ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
-                        val maxPacketSize = wMaxPacketSizeRaw and 0x7FF
-                        if (isIn && isIsochronous && ((attributes shr 4) and 0x03) != 0x01) {
-                            isoInEndpoint = address
-                            isoInMaxPacketSize = maxPacketSize
-                        } else if (isIsochronous && ((attributes shr 4) and 0x03) == 0x01) {
-                            isoFeedbackEndpoint = address
-                            isoFeedbackMaxPacketSize = maxPacketSize
+                DT_ENDPOINT ->
+                    if (inTargetInterface) {
+                        val address = rawDescriptors[offset + 2].toInt() and 0xFF
+                        val attributes = rawDescriptors[offset + 3].toInt() and 0xFF
+                        val isIn = (address and ENDPOINT_DIR_IN_MASK) != 0
+                        val isIsochronous = (attributes and ENDPOINT_ATTR_TRANSFER_TYPE_MASK) == ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
+                        if (offset + 5 < rawDescriptors.size) {
+                            val wMaxPacketSizeRaw = (rawDescriptors[offset + 4].toInt() and 0xFF) or ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
+                            val maxPacketSize = wMaxPacketSizeRaw and 0x7FF
+                            if (isIn && isIsochronous && ((attributes shr 4) and 0x03) != 0x01) {
+                                isoInEndpoint = address
+                                isoInMaxPacketSize = maxPacketSize
+                            } else if (isIsochronous && ((attributes shr 4) and 0x03) == 0x01) {
+                                isoFeedbackEndpoint = address
+                                isoFeedbackMaxPacketSize = maxPacketSize
+                            }
                         }
                     }
-                }
             }
             offset += bLength
         }
@@ -473,40 +455,31 @@ object UsbAudioDescriptorParser {
             isochronousInEndpointAddress = isoInEndpoint,
             isochronousInMaxPacketSize = isoInMaxPacketSize,
             isochronousFeedbackEndpointAddress = isoFeedbackEndpoint,
-            isochronousFeedbackMaxPacketSize = isoFeedbackMaxPacketSize
-        )
+            isochronousFeedbackMaxPacketSize = isoFeedbackMaxPacketSize)
     }
 
     /**
      * Picks the "best" capture-capable alternate setting.
      *
-     * Many real UAC2 DJ mixers (e.g. Pioneer DJM-A9, DJM-V10) do not expose a dedicated
-     * exactly-2-channel alternate setting at all — their USB audio is a single fixed
-     * multi-channel interface representing several stereo pairs (Master, Rec Out, Ch1, Ch2,
-     * ...). Requiring `channelCount == 2` here would reject every such mixer outright, which
-     * looks to the user like "the app doesn't connect" even though the device, permission and
-     * descriptor parsing all worked correctly.
+     * Many real UAC2 DJ mixers (e.g. Pioneer DJM-A9, DJM-V10) do not expose a dedicated exactly-2-channel alternate setting at all — their USB audio is a
+     * single fixed multi-channel interface representing several stereo pairs (Master, Rec Out, Ch1, Ch2, ...). Requiring `channelCount == 2` here would reject
+     * every such mixer outright, which looks to the user like "the app doesn't connect" even though the device, permission and descriptor parsing all worked
+     * correctly.
      *
-     * We therefore prefer an exact stereo (2ch) alternate if one exists, but fall back to the
-     * narrowest available multi-channel alternate (closest to stereo) rather than rejecting the
-     * device entirely. Callers must read the resulting [AudioStreamingInterfaceInfo.channelCount]
-     * back out and use it end-to-end (AAudio stream + file writer) instead of assuming 2.
+     * We therefore prefer an exact stereo (2ch) alternate if one exists, but fall back to the narrowest available multi-channel alternate (closest to stereo)
+     * rather than rejecting the device entirely. Callers must read the resulting [AudioStreamingInterfaceInfo.channelCount] back out and use it end-to-end
+     * (AAudio stream + file writer) instead of assuming 2.
      */
-    internal fun selectBestStereoInterface(
-        interfaces: List<AudioStreamingInterfaceInfo>
-    ): AudioStreamingInterfaceInfo? {
+    internal fun selectBestStereoInterface(interfaces: List<AudioStreamingInterfaceInfo>): AudioStreamingInterfaceInfo? {
         val candidates = interfaces.filter {
             CaptureFormatPolicy.isSupported(it.channelCount, it.subframeSize, it.bitResolution) &&
-                it.isochronousInEndpointAddress != null && it.alternateSetting > 0
+                it.isochronousInEndpointAddress != null &&
+                it.alternateSetting > 0
         }
         val exactStereo = candidates.filter { it.channelCount == 2 }
         val pool = exactStereo.ifEmpty { candidates }
         // Within the chosen pool, prefer the narrowest channel count (closest to stereo when
         // falling back to multichannel), then the highest bit resolution/subframe size.
-        return pool.maxWithOrNull(
-            compareBy<AudioStreamingInterfaceInfo> { -it.channelCount }
-                .thenBy { it.bitResolution }
-                .thenBy { it.subframeSize }
-        )
+        return pool.maxWithOrNull(compareBy<AudioStreamingInterfaceInfo> { -it.channelCount }.thenBy { it.bitResolution }.thenBy { it.subframeSize })
     }
 }

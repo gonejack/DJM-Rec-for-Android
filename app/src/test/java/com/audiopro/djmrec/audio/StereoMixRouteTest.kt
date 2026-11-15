@@ -21,8 +21,7 @@ class StereoMixRouteTest {
     @Test
     fun `identical selected sources produce mono while None keeps two output channels`() {
         for (source in 0..5) assertEquals(1, StereoMixRoute(source, source).validated(3).outputChannelCount)
-        for (route in listOf(StereoMixRoute(), StereoMixRoute(0, -1),
-            StereoMixRoute(-1, 3), StereoMixRoute(-1, -1))) {
+        for (route in listOf(StereoMixRoute(), StereoMixRoute(0, -1), StereoMixRoute(-1, 3), StereoMixRoute(-1, -1))) {
             assertEquals(route, route.validated(3))
             assertEquals(2, route.outputChannelCount)
         }

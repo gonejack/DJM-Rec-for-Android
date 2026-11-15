@@ -1,16 +1,21 @@
 package com.audiopro.djmrec.streaming
+
+import kotlin.math.*
 import org.junit.Assert.*
 import org.junit.Test
-import kotlin.math.*
 
 class StereoPcmDownsamplerTest {
-    private fun tone(rate: Int, frequency: Int): ByteArray = ByteArray(rate / 5 * 4).apply {
-        for (i in 0 until size / 4) {
-            val value = (sin(2 * PI * frequency * i / rate) * 16000).toInt()
-            this[i * 4] = value.toByte(); this[i * 4 + 1] = (value shr 8).toByte()
-            this[i * 4 + 2] = (-value).toByte(); this[i * 4 + 3] = (-value shr 8).toByte()
+    private fun tone(rate: Int, frequency: Int): ByteArray =
+        ByteArray(rate / 5 * 4).apply {
+            for (i in 0 until size / 4) {
+                val value = (sin(2 * PI * frequency * i / rate) * 16000).toInt()
+                this[i * 4] = value.toByte()
+                this[i * 4 + 1] = (value shr 8).toByte()
+                this[i * 4 + 2] = (-value).toByte()
+                this[i * 4 + 3] = (-value shr 8).toByte()
+            }
         }
-    }
+
     private fun rms(bytes: ByteArray): Double {
         var sum = 0.0
         for (i in 400 until bytes.size step 4) {
@@ -19,7 +24,9 @@ class StereoPcmDownsamplerTest {
         }
         return sqrt(sum / ((bytes.size - 400) / 4))
     }
-    @Test fun downsamplingPreservesDurationStereoAndRejectsAliasing() {
+
+    @Test
+    fun downsamplingPreservesDurationStereoAndRejectsAliasing() {
         val input = tone(96000, 1000)
         val output = StereoPcmDownsampler(96000, 48000).convert(input, input.size)
         assertEquals(input.size / 2, output.size)
@@ -31,7 +38,9 @@ class StereoPcmDownsamplerTest {
         val high = tone(96000, 30000)
         assertTrue(rms(StereoPcmDownsampler(96000, 48000).convert(high, high.size)) < 100)
     }
-    @Test fun arbitraryBlockBoundariesPreserveFilterState() {
+
+    @Test
+    fun arbitraryBlockBoundariesPreserveFilterState() {
         val input = tone(88200, 1000)
         val expected = StereoPcmDownsampler(88200, 44100).convert(input, input.size)
         val converter = StereoPcmDownsampler(88200, 44100)

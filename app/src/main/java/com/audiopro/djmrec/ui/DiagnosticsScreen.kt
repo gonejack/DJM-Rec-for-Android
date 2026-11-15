@@ -48,43 +48,29 @@ fun DiagnosticsScreen() {
     var exporting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Support & diagnostics", style = MaterialTheme.typography.headlineSmall)
         Text(
             "Export a local diagnostic report to troubleshoot your phone or mixer. Reports are shared only when you choose an app in the system share sheet.",
-            color = TextSecondary
-        )
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Icon(
-                    Icons.Filled.BugReport,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            color = TextSecondary)
+        Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Icon(Icons.Filled.BugReport, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text("Diagnostic report", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it; error = null },
+                    onValueChange = {
+                        description = it
+                        error = null
+                    },
                     label = { Text("What went wrong? (optional)") },
                     supportingText = { Text("Include what you expected and what happened.") },
                     minLines = 3,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    modifier = Modifier.fillMaxWidth())
                 Text(
                     "The report includes this phone and Android version, the connected mixer and its USB descriptors, audio devices, app settings and recent logs. No audio recordings or file names are included.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
+                    color = TextSecondary)
                 Button(
                     enabled = !exporting,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
@@ -94,37 +80,32 @@ fun DiagnosticsScreen() {
                         val reportDescription = description.trim()
                         scope.launch {
                             runCatching {
-                                val file = withContext(Dispatchers.IO) {
-                                    val prefix = if (reportDescription.isBlank()) "" else
-                                        "USER DESCRIPTION:\n${DiagnosticPrivacy.redact(reportDescription)}\n\n"
-                                    val report = prefix + LogExporter.collectDiagnosticReport(context)
-                                    LogExporter.writeReportToFile(context, report)
-                                }
+                                val file =
+                                    withContext(Dispatchers.IO) {
+                                        val prefix =
+                                            if (reportDescription.isBlank()) "" else "USER DESCRIPTION:\n${DiagnosticPrivacy.redact(reportDescription)}\n\n"
+                                        val report = prefix + LogExporter.collectDiagnosticReport(context)
+                                        LogExporter.writeReportToFile(context, report)
+                                    }
                                 LogExporter.shareReport(context, file)
-                            }.onFailure {
-                                error = "Could not export a report: ${it.message ?: "unknown error"}"
                             }
+                                .onFailure { error = "Could not export a report: ${it.message ?: "unknown error"}" }
                             exporting = false
                         }
+                    }) {
+                        if (exporting) {
+                            CircularProgressIndicator(modifier = Modifier.height(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.height(18.dp))
+                            Text(" Export diagnostic report")
+                        }
                     }
-                ) {
-                    if (exporting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.height(24.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.height(18.dp))
-                        Text(" Export diagnostic report")
-                    }
-                }
                 error?.let { message ->
                     Text(
                         message,
                         style = MaterialTheme.typography.bodySmall,
                         color = AccentRed,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-                    )
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 }
             }
         }

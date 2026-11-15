@@ -82,9 +82,9 @@ import com.audiopro.djmrec.ui.components.StereoVuMeter
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 
 /** These Compose overlays are local UI siblings of the camera surface, never encoder filters. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,10 +108,11 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
     }
     fun shareUrl(url: String) {
-        val share = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, "Watch my DJ set live: $url")
-        }
+        val share =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "Watch my DJ set live: $url")
+            }
         runCatching { context.startActivity(Intent.createChooser(share, "Share broadcast")) }
     }
 
@@ -129,202 +130,205 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
         onDispose { view.keepScreenOn = previous }
     }
     DisposableEffect(Unit) { onDispose { viewModel.detachLivePreview() } }
-    LaunchedEffect(Unit) { while (true) { now = SystemClock.elapsedRealtime(); delay(1000.milliseconds) } }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = SystemClock.elapsedRealtime()
+            delay(1000.milliseconds)
+        }
+    }
     // Back leaves the console WITHOUT ending the stream — the console is a view on a running
     // service stream. Ending the stream is always the explicit red button.
     BackHandler { if (settings) settings = false else viewModel.cameraConsoleOpen.value = false }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = { SurfaceView(it).also(viewModel::attachLivePreview) },
-            modifier = Modifier.fillMaxSize()
-        )
-        if (grid) Canvas(Modifier.fillMaxSize()) {
-            for (i in 1..2) {
-                drawLine(Color.White.copy(alpha = 0.35f), Offset(size.width * i / 3, 0f), Offset(size.width * i / 3, size.height))
-                drawLine(Color.White.copy(alpha = 0.35f), Offset(0f, size.height * i / 3), Offset(size.width, size.height * i / 3))
+        AndroidView(factory = { SurfaceView(it).also(viewModel::attachLivePreview) }, modifier = Modifier.fillMaxSize())
+        if (grid)
+            Canvas(Modifier.fillMaxSize()) {
+                for (i in 1..2) {
+                    drawLine(Color.White.copy(alpha = 0.35f), Offset(size.width * i / 3, 0f), Offset(size.width * i / 3, size.height))
+                    drawLine(Color.White.copy(alpha = 0.35f), Offset(0f, size.height * i / 3), Offset(size.width, size.height * i / 3))
+                }
             }
-        }
-        Surface(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
-            color = Color.Black.copy(alpha = 0.78f), contentColor = Color.White,
+        Surface(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
+            color = Color.Black.copy(alpha = 0.78f),
+            contentColor = Color.White,
             shape = RoundedCornerShape(16.dp)) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Explicit, labeled exit: leaves the console while the stream keeps
-                        // running (the red End stream button is the only way to stop the show).
-                        Row(
-                            modifier = Modifier.clickable { viewModel.cameraConsoleOpen.value = false }
-                                .heightIn(min = 48.dp).padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(18.dp))
-                            Text("Exit", style = MaterialTheme.typography.labelMedium)
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Explicit, labeled exit: leaves the console while the stream
+                            // keeps
+                            // running (the red End stream button is the only way to stop
+                            // the show).
+                            Row(
+                                modifier = Modifier.clickable { viewModel.cameraConsoleOpen.value = false }.heightIn(min = 48.dp).padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(18.dp))
+                                    Text("Exit", style = MaterialTheme.typography.labelMedium)
+                                }
+                            LiveDot(live.status)
+                            Text(
+                                when (live.status) {
+                                    LiveStreamStatus.LIVE if live.localOnly -> "REC · Phone"
+                                    LiveStreamStatus.LIVE -> "LIVE · ${live.platform?.label.orEmpty()}"
+                                    else -> live.status.name.replace('_', ' ')
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold)
+                            Text(
+                                cameraTime(if (live.startedAtMillis > 0) now - live.startedAtMillis else 0),
+                                fontFamily = FontFamily.Monospace,
+                                style = MaterialTheme.typography.labelMedium)
                         }
-                        LiveDot(live.status)
-                        Text(
-                            when (live.status) {
-                                LiveStreamStatus.LIVE if live.localOnly -> "REC · Phone"
-                                LiveStreamStatus.LIVE -> "LIVE · ${live.platform?.label.orEmpty()}"
-                                else -> live.status.name.replace('_', ' ')
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(cameraTime(if (live.startedAtMillis > 0) now - live.startedAtMillis else 0),
-                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        youtube.viewerCount?.let { count ->
-                            Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.14f)) {
-                                Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Visibility, "Watching now",
-                                        modifier = Modifier.size(14.dp))
-                                    Text(formatViewerCount(count), style = MaterialTheme.typography.labelMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            youtube.viewerCount?.let { count ->
+                                Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.14f)) {
+                                    Row(
+                                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Icon(Icons.Default.Visibility, "Watching now", modifier = Modifier.size(14.dp))
+                                            Text(formatViewerCount(count), style = MaterialTheme.typography.labelMedium)
+                                        }
                                 }
                             }
-                        }
-                        youtube.watchUrl?.let { url ->
-                            IconButton(onClick = { shareUrl(url) }) {
-                                Icon(Icons.Default.Share, "Share watch link")
-                            }
+                            youtube.watchUrl?.let { url -> IconButton(onClick = { shareUrl(url) }) { Icon(Icons.Default.Share, "Share watch link") } }
                         }
                     }
-                }
-                CameraAudioMeter(viewModel)
-                Text(when {
-                    live.overheated -> "Overheating: 15 fps and lower bitrate until the phone cools"
-                    live.localOnly -> live.videoMessage ?: "Saving video · part ${live.videoSegment}"
-                    live.status == LiveStreamStatus.RECONNECTING -> "Reconnecting — check network"
-                    live.platform == LivePlatform.YOUTUBE && youtube.status != YouTubeBroadcastStatus.LIVE -> youtube.message
-                    youtube.healthIssues.isNotEmpty() -> youtube.healthIssues.first()
-                    live.audioFramesSent == 0L -> "Waiting for outgoing audio"
-                    else -> "AAC audio sent · peak ${live.audioPeakDb.roundToInt()} dBFS"
-                }, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-            }
-        }
-        Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
-            color = Color.Black.copy(alpha = 0.78f), contentColor = Color.White,
-            shape = RoundedCornerShape(16.dp)) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(when (recording) {
-                        is RecordingState.Recording -> "REC ${cameraTime(elapsed)}"
-                        is RecordingState.Paused -> "Recording paused · ${cameraTime(elapsed)}"
-                        else -> if (live.localOnly) "Video only · audio recording off" else "Streaming only · local recording off"
-                    }, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelLarge)
-                    Text("gain ${if (gain > 0) "+" else ""}$gain dB · " +
-                        if (live.localOnly) "part ${live.videoSegment}"
-                        else "${live.bitrateBitsPerSecond / 1000} kbps" + if (live.recordingVideo) " · saving video" else "",
-                        style = MaterialTheme.typography.labelMedium)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    val recordingActive =
-                        recording is RecordingState.Recording || recording is RecordingState.Paused
-                    Button(
-                        onClick = {
-                            if (recordingActive) viewModel.stopRecording() else viewModel.startRecording()
+                    CameraAudioMeter(viewModel)
+                    Text(
+                        when {
+                            live.overheated -> "Overheating: 15 fps and lower bitrate until the phone cools"
+                            live.localOnly -> live.videoMessage ?: "Saving video · part ${live.videoSegment}"
+                            live.status == LiveStreamStatus.RECONNECTING -> "Reconnecting — check network"
+                            live.platform == LivePlatform.YOUTUBE && youtube.status != YouTubeBroadcastStatus.LIVE -> youtube.message
+                            youtube.healthIssues.isNotEmpty() -> youtube.healthIssues.first()
+                            live.audioFramesSent == 0L -> "Waiting for outgoing audio"
+                            else -> "AAC audio sent · peak ${live.audioPeakDb.roundToInt()} dBFS"
                         },
-                        enabled = !saving && (recordingActive || recording is RecordingState.Monitoring),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentRed)
-                    ) {
-                        Icon(Icons.Default.FiberManualRecord, null)
-                        Text(if (recordingActive) " Stop" else " Rec")
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1)
+                }
+            }
+        Surface(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
+            color = Color.Black.copy(alpha = 0.78f),
+            contentColor = Color.White,
+            shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            when (recording) {
+                                is RecordingState.Recording -> "REC ${cameraTime(elapsed)}"
+                                is RecordingState.Paused -> "Recording paused · ${cameraTime(elapsed)}"
+                                else -> if (live.localOnly) "Video only · audio recording off" else "Streaming only · local recording off"
+                            },
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "gain ${if (gain > 0) "+" else ""}$gain dB · " +
+                                if (live.localOnly) "part ${live.videoSegment}"
+                                else "${live.bitrateBitsPerSecond / 1000} kbps" + if (live.recordingVideo) " · saving video" else "",
+                            style = MaterialTheme.typography.labelMedium)
                     }
-                    IconButton(onClick = viewModel::switchLiveCamera, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Cameraswitch, "Switch camera")
-                    }
-                    Button(onClick = { confirmStop = true }, colors = ButtonDefaults.buttonColors(containerColor = AccentRed)) {
-                        Icon(Icons.Default.Stop, null); Text(if (live.localOnly) "Stop video" else "End stream")
-                    }
-                    IconButton(onClick = { settings = true }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Settings, "Stream controls")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        val recordingActive = recording is RecordingState.Recording || recording is RecordingState.Paused
+                        Button(
+                            onClick = { if (recordingActive) viewModel.stopRecording() else viewModel.startRecording() },
+                            enabled = !saving && (recordingActive || recording is RecordingState.Monitoring),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed)) {
+                                Icon(Icons.Default.FiberManualRecord, null)
+                                Text(if (recordingActive) " Stop" else " Rec")
+                            }
+                        IconButton(onClick = viewModel::switchLiveCamera, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Cameraswitch, "Switch camera") }
+                        Button(onClick = { confirmStop = true }, colors = ButtonDefaults.buttonColors(containerColor = AccentRed)) {
+                            Icon(Icons.Default.Stop, null)
+                            Text(if (live.localOnly) "Stop video" else "End stream")
+                        }
+                        IconButton(onClick = { settings = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Settings, "Stream controls") }
                     }
                 }
+            }
+    }
+    if (confirmStop)
+        AlertDialog(
+            onDismissRequest = { confirmStop = false },
+            title = { Text(if (live.localOnly) "Stop video recording?" else "End livestream?") },
+            text = {
+                Text(
+                    if (live.localOnly) "The video is saved to Movies/DJMRec. Any audio recording continues."
+                    else "Viewers will disconnect. Any local recording continues.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmStop = false
+                        viewModel.stopLiveStream()
+                    }) {
+                        Text(if (live.localOnly) "Stop video" else "End stream")
+                    }
+            },
+            dismissButton = { TextButton(onClick = { confirmStop = false }) { Text(if (live.localOnly) "Keep recording" else "Keep streaming") } })
+    if (settings)
+        ModalBottomSheet(onDismissRequest = { settings = false }) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Broadcast", style = MaterialTheme.typography.titleLarge)
+                Text("${live.platform?.label.orEmpty()} · ${if (live.status == LiveStreamStatus.LIVE) "Live now" else live.status.name.replace('_', ' ')}")
+                youtube.viewerCount?.let { count -> Text("${formatViewerCount(count)} watching now", style = MaterialTheme.typography.titleMedium) }
+                youtube.healthIssues.forEach { issue -> Text(issue, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
+                youtube.watchUrl?.let { url ->
+                    OutlinedButton(onClick = { openUrl(url) }, modifier = Modifier.fillMaxWidth()) { Text("Open watch page") }
+                    OutlinedButton(onClick = { shareUrl(url) }, modifier = Modifier.fillMaxWidth()) { Text("Share watch link") }
+                }
+                youtube.studioUrl?.let { url -> OutlinedButton(onClick = { openUrl(url) }, modifier = Modifier.fillMaxWidth()) { Text("Open YouTube Studio") } }
+                if (live.recordingVideo && !live.localOnly) {
+                    Text("Saving video · part ${live.videoSegment}", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = viewModel::stopVideoRecording, modifier = Modifier.fillMaxWidth()) { Text("Stop saving video") }
+                }
+                live.videoMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
+                HorizontalDivider()
+                Text("Camera", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Club lights and strobes make automatic exposure, focus and white balance pump. " +
+                        "Point the camera at the booth, then lock them. Switching camera unlocks.",
+                    style = MaterialTheme.typography.bodySmall)
+                val locks = live.cameraLocks
+                CameraLockRow("Lock exposure", locks.exposure) { viewModel.setCameraLocks(locks.copy(exposure = it)) }
+                CameraLockRow("Lock focus", locks.focus) { viewModel.setCameraLocks(locks.copy(focus = it)) }
+                CameraLockRow("Lock white balance", locks.whiteBalance) { viewModel.setCameraLocks(locks.copy(whiteBalance = it)) }
+                HorizontalDivider()
+                Text("Stream controls", style = MaterialTheme.typography.titleLarge)
+                Text("Meters, timers and guides appear only on your screen.")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Framing grid")
+                    Switch(grid, { grid = it })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Keep screen awake")
+                    Switch(awake, { awake = it })
+                }
+                Text("Mix gain: ${AudioGain.format(gain)}")
+                Slider(
+                    value = gain,
+                    onValueChange = viewModel::setRecordingGainDb,
+                    valueRange = AudioGain.MIN_DB..AudioGain.MAX_DB,
+                    steps = AudioGain.SLIDER_STEPS,
+                    enabled = AudioGain.canAdjust(recording, saving))
+                Text(
+                    if (AudioGain.canAdjust(recording, saving)) "Gain changes apply immediately to the audio sent to viewers. Watch for clipping."
+                    else "Gain is temporarily unavailable while preparing or saving.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
-    }
-    if (confirmStop) AlertDialog(
-        onDismissRequest = { confirmStop = false },
-        title = { Text(if (live.localOnly) "Stop video recording?" else "End livestream?") },
-        text = { Text(if (live.localOnly) "The video is saved to Movies/DJMRec. Any audio recording continues."
-            else "Viewers will disconnect. Any local recording continues.") },
-        confirmButton = { TextButton(onClick = { confirmStop = false; viewModel.stopLiveStream() }) {
-            Text(if (live.localOnly) "Stop video" else "End stream") } },
-        dismissButton = { TextButton(onClick = { confirmStop = false }) {
-            Text(if (live.localOnly) "Keep recording" else "Keep streaming") } }
-    )
-    if (settings) ModalBottomSheet(onDismissRequest = { settings = false }) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Broadcast", style = MaterialTheme.typography.titleLarge)
-            Text("${live.platform?.label.orEmpty()} · ${if (live.status == LiveStreamStatus.LIVE) "Live now" else live.status.name.replace('_', ' ')}")
-            youtube.viewerCount?.let { count ->
-                Text("${formatViewerCount(count)} watching now", style = MaterialTheme.typography.titleMedium)
-            }
-            youtube.healthIssues.forEach { issue ->
-                Text(issue, style = MaterialTheme.typography.bodySmall, color = AccentAmber)
-            }
-            youtube.watchUrl?.let { url ->
-                OutlinedButton(onClick = { openUrl(url) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Open watch page")
-                }
-                OutlinedButton(onClick = { shareUrl(url) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Share watch link")
-                }
-            }
-            youtube.studioUrl?.let { url ->
-                OutlinedButton(onClick = { openUrl(url) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Open YouTube Studio")
-                }
-            }
-            if (live.recordingVideo && !live.localOnly) {
-                Text("Saving video · part ${live.videoSegment}", style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = viewModel::stopVideoRecording, modifier = Modifier.fillMaxWidth()) {
-                    Text("Stop saving video")
-                }
-            }
-            live.videoMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
-            HorizontalDivider()
-            Text("Camera", style = MaterialTheme.typography.titleLarge)
-            Text("Club lights and strobes make automatic exposure, focus and white balance pump. " +
-                "Point the camera at the booth, then lock them. Switching camera unlocks.",
-                style = MaterialTheme.typography.bodySmall)
-            val locks = live.cameraLocks
-            CameraLockRow("Lock exposure", locks.exposure) { viewModel.setCameraLocks(locks.copy(exposure = it)) }
-            CameraLockRow("Lock focus", locks.focus) { viewModel.setCameraLocks(locks.copy(focus = it)) }
-            CameraLockRow("Lock white balance", locks.whiteBalance) { viewModel.setCameraLocks(locks.copy(whiteBalance = it)) }
-            HorizontalDivider()
-            Text("Stream controls", style = MaterialTheme.typography.titleLarge)
-            Text("Meters, timers and guides appear only on your screen.")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Framing grid"); Switch(grid, { grid = it })
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Keep screen awake"); Switch(awake, { awake = it })
-            }
-            Text("Mix gain: ${AudioGain.format(gain)}")
-            Slider(value = gain, onValueChange = viewModel::setRecordingGainDb,
-                valueRange = AudioGain.MIN_DB..AudioGain.MAX_DB, steps = AudioGain.SLIDER_STEPS,
-                enabled = AudioGain.canAdjust(recording, saving))
-            Text(if (AudioGain.canAdjust(recording, saving)) "Gain changes apply immediately to the audio sent to viewers. Watch for clipping."
-                else "Gain is temporarily unavailable while preparing or saving.", style = MaterialTheme.typography.bodySmall)
-        }
-    }
 }
 
 @Composable
 private fun CameraLockRow(label: String, locked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(label); Switch(locked, onChange)
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label)
+        Switch(locked, onChange)
     }
 }
 
@@ -342,27 +346,31 @@ internal fun cameraTime(millis: Long): String {
 /** Pulsing red dot while live, steady amber while connecting (steady under reduced motion). */
 @Composable
 private fun LiveDot(status: LiveStreamStatus) {
-    val color = when (status) {
-        LiveStreamStatus.LIVE, LiveStreamStatus.ERROR -> AccentRed
-        LiveStreamStatus.PREPARING, LiveStreamStatus.CONNECTING, LiveStreamStatus.RECONNECTING -> AccentAmber
-        LiveStreamStatus.IDLE -> Color.White
-    }
+    val color =
+        when (status) {
+            LiveStreamStatus.LIVE,
+            LiveStreamStatus.ERROR -> AccentRed
+            LiveStreamStatus.PREPARING,
+            LiveStreamStatus.CONNECTING,
+            LiveStreamStatus.RECONNECTING -> AccentAmber
+            LiveStreamStatus.IDLE -> Color.White
+        }
     val reducedMotion = rememberReducedMotion()
-    val alpha = if (status != LiveStreamStatus.LIVE || reducedMotion) 1f else {
-        val transition = rememberInfiniteTransition(label = "liveDot")
-        val pulse by transition.animateFloat(
-            initialValue = 1f,
-            targetValue = 0.35f,
-            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-            label = "liveDotPulse"
-        )
-        pulse
-    }
+    val alpha =
+        if (status != LiveStreamStatus.LIVE || reducedMotion) 1f
+        else {
+            val transition = rememberInfiniteTransition(label = "liveDot")
+            val pulse by
+                transition.animateFloat(
+                    initialValue = 1f, targetValue = 0.35f, animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "liveDotPulse")
+            pulse
+        }
     Box(Modifier.size(10.dp).background(color.copy(alpha = alpha), CircleShape))
 }
 
-internal fun formatViewerCount(count: Int): String = when {
-    count >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", count / 1_000_000f)
-    count >= 1_000 -> String.format(java.util.Locale.US, "%.1fK", count / 1_000f)
-    else -> count.toString()
-}
+internal fun formatViewerCount(count: Int): String =
+    when {
+        count >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", count / 1_000_000f)
+        count >= 1_000 -> String.format(java.util.Locale.US, "%.1fK", count / 1_000f)
+        else -> count.toString()
+    }

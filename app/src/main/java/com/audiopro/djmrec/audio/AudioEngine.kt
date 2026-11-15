@@ -1,13 +1,11 @@
 package com.audiopro.djmrec.audio
 
 /**
- * Thin Kotlin/JNI boundary over the native `UsbAudioEngine`. The engine owns exactly one
- * AAudio exclusive stream + one ring buffer + one encoder at a time, so this wrapper is a
- * singleton object rather than a class — mirrors the native side's lifetime.
+ * Thin Kotlin/JNI boundary over the native `UsbAudioEngine`. The engine owns exactly one AAudio exclusive stream + one ring buffer + one encoder at a time, so
+ * this wrapper is a singleton object rather than a class — mirrors the native side's lifetime.
  *
- * All native calls are safe to invoke from any thread; the native side takes its own locks
- * around state transitions. However callers should still serialize start/stop/pause calls
- * (the ViewModel does this) to avoid nonsensical overlapping transitions.
+ * All native calls are safe to invoke from any thread; the native side takes its own locks around state transitions. However callers should still serialize
+ * start/stop/pause calls (the ViewModel does this) to avoid nonsensical overlapping transitions.
  */
 object AudioEngine {
 
@@ -16,43 +14,33 @@ object AudioEngine {
     }
 
     /**
-     * Opens the exclusive, low-latency AAudio input stream bound to [audioManagerDeviceId] and
-     * allocates the ring buffer. Must be called before [startRecording].
+     * Opens the exclusive, low-latency AAudio input stream bound to [audioManagerDeviceId] and allocates the ring buffer. Must be called before
+     * [startRecording].
      *
-     * @return the sample rate AAudio actually negotiated (may differ from a hint if the
-     *   hardware does not support it), or -1 on failure.
+     * @return the sample rate AAudio actually negotiated (may differ from a hint if the hardware does not support it), or -1 on failure.
      */
-    external fun open(
-        audioManagerDeviceId: Int,
-        sampleRateHint: Int,
-        channelCount: Int,
-        bitDepth: Int
-    ): Int
+    external fun open(audioManagerDeviceId: Int, sampleRateHint: Int, channelCount: Int, bitDepth: Int): Int
 
     /**
-     * Opens the raw libusb isochronous capture path instead of AAudio/AudioRecord, extracting
-     * a stereo pair out of a wider multichannel USB Audio interface. This exists because
-     * AAudio has no API to select an arbitrary channel *offset* out of a multichannel UAC2
-     * interface -- it only ever gives you channels 1/2 (or all N channels, undifferentiated).
-     * Mixers like the Pioneer DJM-A9 expose a combined 12-channel interface. This path can
-     * select any stereo pair and, for the DJM-A9, routes MIX (REC OUT) to that pair first.
+     * Opens the raw libusb isochronous capture path instead of AAudio/AudioRecord, extracting a stereo pair out of a wider multichannel USB Audio interface.
+     * This exists because AAudio has no API to select an arbitrary channel *offset* out of a multichannel UAC2 interface -- it only ever gives you channels 1/2
+     * (or all N channels, undifferentiated). Mixers like the Pioneer DJM-A9 expose a combined 12-channel interface. This path can select any stereo pair and,
+     * for the DJM-A9, routes MIX (REC OUT) to that pair first.
      *
-     * @param fd an *open* `UsbDeviceConnection.getFileDescriptor()` -- the connection must be
-     *   kept open (not `.close()`'d) for the entire capture session; see
+     * @param fd an *open* `UsbDeviceConnection.getFileDescriptor()` -- the connection must be kept open (not `.close()`'d) for the entire capture session; see
      *   `UsbAudioManager.openIsoCaptureHandle()`.
      * @param interfaceNumber the AudioStreaming interface number (not AudioControl).
-     * @param alternateSetting the alt setting whose isochronous endpoint carries audio (UAC2
-     *   devices idle on alt setting 0, which has no endpoint / zero bandwidth).
+     * @param alternateSetting the alt setting whose isochronous endpoint carries audio (UAC2 devices idle on alt setting 0, which has no endpoint / zero
+     *   bandwidth).
      * @param endpointAddress the isochronous IN endpoint address (e.g. `0x81`).
      * @param maxPacketSize `wMaxPacketSize` from that endpoint's descriptor.
      * @param totalChannels total interleaved channel count in the *wire* format (e.g. 12).
      * @param subframeSize bytes per sample container on the wire (1/2/3/4).
      * @param bitResolution significant bits per sample within that container (e.g. 24).
      * @param extractChannelOffset 0-indexed first channel of the stereo pair to pull out.
-     * @param sampleRateHint trusted as-is; nothing in this path negotiates a rate back from
-     *   the device the way AAudio does.
-     * @param multitrack advanced mode: also run every wire channel through the track bus so
-     *   each stereo pair can be metered and recorded as its own file next to the master.
+     * @param sampleRateHint trusted as-is; nothing in this path negotiates a rate back from the device the way AAudio does.
+     * @param multitrack advanced mode: also run every wire channel through the track bus so each stereo pair can be metered and recorded as its own file next
+     *   to the master.
      * @return `sampleRateHint` on success, or -1 on failure.
      */
     external fun openUsbIso(
@@ -86,10 +74,7 @@ object AudioEngine {
     /** Next USB open: adapt independent input clocks to Track 1 with equal buffering on all tracks. */
     external fun setSyncInputsToTrack1(enabled: Boolean)
 
-    /**
-     * Begins pulling from the ring buffer into the selected encoder and writing to [outputPath].
-     * [format] is [RecordingFormat.nativeValue].
-     */
+    /** Begins pulling from the ring buffer into the selected encoder and writing to [outputPath]. [format] is [RecordingFormat.nativeValue]. */
     external fun startRecording(outputPath: String, format: Int): Boolean
 
     external fun startRecordingFd(fd: Int, format: Int): Boolean
@@ -122,10 +107,8 @@ object AudioEngine {
     external fun close()
 
     /**
-     * Instantaneous stereo meter reading, in the layout
-     * `[leftPeakDb, leftRmsDb, rightPeakDb, rightRmsDb]`, already scaled to dBFS in
-     * Trailing floats: committed cursor modulo 1048576, then bin duration in milliseconds.
-     * Polled by the monitoring thread; UI scrolling uses the display frame clock.
+     * Instantaneous stereo meter reading, in the layout `[leftPeakDb, leftRmsDb, rightPeakDb, rightRmsDb]`, already scaled to dBFS in Trailing floats:
+     * committed cursor modulo 1048576, then bin duration in milliseconds. Polled by the monitoring thread; UI scrolling uses the display frame clock.
      */
     external fun getLevels(): FloatArray
 
@@ -146,11 +129,9 @@ object AudioEngine {
     external fun getDiagnosticSummary(): String
 
     /**
-     * RGB waveform snapshot: returns `kWaveformBinCount * 4 + 2` floats in the layout
-     * `[amp0, low0, mid0, high0, amp1, low1, mid1, high1, ...]`, each in [0, 1].
-     * Low ≈ red, mid ≈ green, high ≈ blue — the CDJ-3000 color mapping.
-     * Trailing floats: committed cursor modulo 1048576, then bin duration in milliseconds.
-     * Polled by the monitoring thread; UI scrolling uses the display frame clock.
+     * RGB waveform snapshot: returns `kWaveformBinCount * 4 + 2` floats in the layout `[amp0, low0, mid0, high0, amp1, low1, mid1, high1, ...]`, each in
+     * [0, 1]. Low ≈ red, mid ≈ green, high ≈ blue — the CDJ-3000 color mapping. Trailing floats: committed cursor modulo 1048576, then bin duration in
+     * milliseconds. Polled by the monitoring thread; UI scrolling uses the display frame clock.
      */
     external fun getWaveformBins(): FloatArray
 
@@ -163,8 +144,8 @@ object AudioEngine {
     external fun setWaveformEnabled(enabled: Boolean)
 
     /**
-     * Applies to the next [startRecording]/[startRecordingFd]: drop the digital silence before
-     * the first audible sample (about -60 dBFS), keeping a short pre-roll before the onset.
+     * Applies to the next [startRecording]/[startRecordingFd]: drop the digital silence before the first audible sample (about -60 dBFS), keeping a short
+     * pre-roll before the onset.
      */
     external fun setTrimLeadingSilence(enabled: Boolean)
 
@@ -183,10 +164,7 @@ object AudioEngine {
     /** Silent audio (below about -60 dBFS) at the end of the file so far, in ms. */
     external fun getTrailingSilenceMillis(): Long
 
-    /**
-     * Opens a second writer (e.g. an MP3 copy of a WAV/FLAC set) that the next
-     * [startRecordingFd] fills with the same audio. Call while not recording.
-     */
+    /** Opens a second writer (e.g. an MP3 copy of a WAV/FLAC set) that the next [startRecordingFd] fills with the same audio. Call while not recording. */
     external fun prepareCompanionFd(fd: Int, format: Int): Boolean
 
     external fun clearPendingCompanion()
@@ -219,8 +197,8 @@ object AudioEngine {
     external fun setTrackWaveformsEnabled(enabled: Boolean)
 
     /**
-     * Three floats per wire channel: peak dBFS since the previous call, smoothed RMS dBFS and
-     * 1f when it clipped since the previous call. Null while the engine is busy opening.
+     * Three floats per wire channel: peak dBFS since the previous call, smoothed RMS dBFS and 1f when it clipped since the previous call. Null while the engine
+     * is busy opening.
      */
     external fun getTrackLevels(): FloatArray?
 

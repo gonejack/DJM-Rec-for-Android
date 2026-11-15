@@ -22,12 +22,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Builds a self-contained diagnostic report (device info, USB host capability, currently
- * enumerated USB devices, AudioManager routing state, battery/charging state, and this
- * process's own logcat) and shares it via the system share sheet.
+ * Builds a self-contained diagnostic report (device info, USB host capability, currently enumerated USB devices, AudioManager routing state, battery/charging
+ * state, and this process's own logcat) and shares it via the system share sheet.
  *
- * No special permissions are required: apps have always been able to read their own process's
- * logcat buffer without READ_LOGS (that restriction only applies to reading *other* apps' logs).
+ * No special permissions are required: apps have always been able to read their own process's logcat buffer without READ_LOGS (that restriction only applies to
+ * reading *other* apps' logs).
  */
 object LogExporter {
 
@@ -73,8 +72,7 @@ object LogExporter {
         sb.appendLine("active session journal: ${RecordingSessionStore.describe(context)}")
         sb.appendLine(
             if (freeBytes == Long.MAX_VALUE) "free storage: unavailable"
-            else "free storage: $freeBytes bytes (${String.format(Locale.US, "%.2f", freeBytes / 1_073_741_824.0)} GiB)"
-        )
+            else "free storage: $freeBytes bytes (${String.format(Locale.US, "%.2f", freeBytes / 1_073_741_824.0)} GiB)")
         sb.appendLine()
     }
 
@@ -87,8 +85,7 @@ object LogExporter {
             sb.appendLine(
                 "WARNING: this device does not report USB host support at all. It cannot act " +
                     "as a USB host regardless of cable/adapter, so a UAC2 mixer can never be " +
-                    "recognized as an audio input on this hardware."
-            )
+                    "recognized as an audio input on this hardware.")
         }
         sb.appendLine()
 
@@ -102,18 +99,17 @@ object LogExporter {
                     "entering USB host/OTG data mode -- this is almost always a cable/adapter " +
                     "problem (a charge-only USB-C cable or a cheap OTG adapter that doesn't pull " +
                     "the CC line correctly), not something this app can fix in software. Try a " +
-                    "cable/adapter explicitly labelled 'USB-C OTG' or 'USB 3.0 OTG'."
-            )
+                    "cable/adapter explicitly labelled 'USB-C OTG' or 'USB 3.0 OTG'.")
         } else {
             devices.forEach { d ->
-                val interfaces = (0 until d.interfaceCount).joinToString(prefix = "[", postfix = "]") { i ->
-                    val intf = d.getInterface(i)
-                    "if${intf.id}/alt${intf.alternateSetting}(class=${intf.interfaceClass},sub=${intf.interfaceSubclass})"
-                }
+                val interfaces =
+                    (0 until d.interfaceCount).joinToString(prefix = "[", postfix = "]") { i ->
+                        val intf = d.getInterface(i)
+                        "if${intf.id}/alt${intf.alternateSetting}(class=${intf.interfaceClass},sub=${intf.interfaceSubclass})"
+                    }
                 sb.appendLine(
                     "  ${d.deviceName} vid=${d.vendorId} pid=${d.productId} name=${d.productName} " +
-                        "hasPermission=${usbManager.hasPermission(d)} interfaces=$interfaces"
-                )
+                        "hasPermission=${usbManager.hasPermission(d)} interfaces=$interfaces")
             }
         }
         sb.appendLine()
@@ -123,9 +119,7 @@ object LogExporter {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         sb.appendLine("=== AudioManager input devices (${inputs.size}) ===")
-        inputs.forEach { info: AudioDeviceInfo ->
-            appendAudioDevice(sb, info)
-        }
+        inputs.forEach { info: AudioDeviceInfo -> appendAudioDevice(sb, info) }
         sb.appendLine()
 
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -140,8 +134,7 @@ object LogExporter {
                 "source=${info.isSource} sink=${info.isSink} sampleRates=${info.sampleRates.toList()} " +
                 "channelCounts=${info.channelCounts.toList()} " +
                 "channelIndexMasks=${info.channelIndexMasks.toList()} " +
-                "channelMasks=${info.channelMasks.toList()} encodings=${info.encodings.toList()}"
-        )
+                "channelMasks=${info.channelMasks.toList()} encodings=${info.encodings.toList()}")
     }
 
     private fun appendPowerSection(context: Context, sb: StringBuilder) {
@@ -149,15 +142,13 @@ object LogExporter {
         sb.appendLine("=== Power state ===")
         if (bm != null) {
             val status = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
-            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
             sb.appendLine("phone is charging: $isCharging")
             if (isCharging) {
                 sb.appendLine(
                     "NOTE: if the mixer is connected and the phone shows only a charging icon " +
                         "with no USB devices listed above, the port negotiated a power-only / " +
-                        "charging data role instead of USB host role -- see the USB section above."
-                )
+                        "charging data role instead of USB host role -- see the USB section above.")
             }
         } else {
             sb.appendLine("BatteryManager unavailable")
@@ -171,14 +162,12 @@ object LogExporter {
         val forceAndroidCapture = prefs.getBoolean(KEY_FORCE_ANDROID_CAPTURE, false)
         sb.appendLine("=== USB capture settings ===")
         sb.appendLine(
-            "capture path: " + when {
-                forceAndroidCapture -> "Android audio stack"
-                else -> "Raw libusb isochronous"
-            }
-        )
-        sb.appendLine(
-            "stereo pair: " + if (offset < 0) "Auto" else "USB channels ${offset + 1}-${offset + 2}"
-        )
+            "capture path: " +
+                when {
+                    forceAndroidCapture -> "Android audio stack"
+                    else -> "Raw libusb isochronous"
+                })
+        sb.appendLine("stereo pair: " + if (offset < 0) "Auto" else "USB channels ${offset + 1}-${offset + 2}")
         sb.appendLine()
     }
 
@@ -189,18 +178,17 @@ object LogExporter {
             sb.appendLine(
                 "completed=${stats[0]} missed=${stats[1]} empty=${stats[2]} " +
                     "partial=${stats[3]} bytes=${stats[4]} nonZeroBytes=${stats[5]} " +
-                    "resubmitFailures=${stats[6]}"
-            )
-            val active = nativeSummary.lineSequence().any { it == "source_mode=usb_iso" } &&
-                nativeSummary.lineSequence().any { it == "stream_open=true" }
-            val health = when {
-                !active -> "INFO - raw USB capture not active"
-                stats[0] == 0L || stats[4] == 0L -> "FAIL - endpoint delivers no packets/audio bytes"
-                stats[5] == 0L -> "WARN - packets arrive but payload is digital silence"
-                stats[6] > 0L -> "WARN - isochronous transfer resubmission failed"
-                stats[1] > 0L -> "WARN - one or more isochronous packets were missed"
-                else -> "PASS - packets and non-zero audio payload are arriving"
-            }
+                    "resubmitFailures=${stats[6]}")
+            val active = nativeSummary.lineSequence().any { it == "source_mode=usb_iso" } && nativeSummary.lineSequence().any { it == "stream_open=true" }
+            val health =
+                when {
+                    !active -> "INFO - raw USB capture not active"
+                    stats[0] == 0L || stats[4] == 0L -> "FAIL - endpoint delivers no packets/audio bytes"
+                    stats[5] == 0L -> "WARN - packets arrive but payload is digital silence"
+                    stats[6] > 0L -> "WARN - isochronous transfer resubmission failed"
+                    stats[1] > 0L -> "WARN - one or more isochronous packets were missed"
+                    else -> "PASS - packets and non-zero audio payload are arriving"
+                }
             sb.appendLine("health: $health")
         } else {
             sb.appendLine("unavailable")
@@ -210,9 +198,7 @@ object LogExporter {
 
     private fun readOwnLogcat(): String {
         return try {
-            val process = ProcessBuilder("logcat", "-d", "-v", "threadtime")
-                .redirectErrorStream(true)
-                .start()
+            val process = ProcessBuilder("logcat", "-d", "-v", "threadtime").redirectErrorStream(true).start()
             val output = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
             process.waitFor()
             if (output.isBlank()) "(empty logcat buffer)" else output
@@ -234,12 +220,13 @@ object LogExporter {
     /** Opens the system share sheet for the given report file. Must be called with an Activity/UI [Context]. */
     fun shareReport(context: Context, file: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "djmrec diagnostic log")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
+        val intent =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "djmrec diagnostic log")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         context.startActivity(Intent.createChooser(intent, "Share diagnostic log"))
     }
 }

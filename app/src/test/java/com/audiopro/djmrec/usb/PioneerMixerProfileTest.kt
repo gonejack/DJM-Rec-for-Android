@@ -26,9 +26,7 @@ class PioneerMixerProfileTest {
         assertEquals(PioneerMixerProfile.DJM_900NXS2, PioneerMixerProfile.find(vendor, 0x000A))
         assertEquals(PioneerMixerProfile.DJM_750MK2, PioneerMixerProfile.find(vendor, 0x001B))
         assertEquals(PioneerMixerProfile.DJM_450, PioneerMixerProfile.find(vendor, 0x0013))
-        listOf(0x0058, 0x0059, 0x005A, 0x005B).forEach { productId ->
-            assertEquals(PioneerMixerProfile.DJM_V5, PioneerMixerProfile.find(vendor, productId))
-        }
+        listOf(0x0058, 0x0059, 0x005A, 0x005B).forEach { productId -> assertEquals(PioneerMixerProfile.DJM_V5, PioneerMixerProfile.find(vendor, productId)) }
     }
 
     @Test
@@ -97,20 +95,8 @@ class PioneerMixerProfileTest {
     fun `decodes per-output and all-output route replies`() {
         assertEquals(0x0A, PioneerMixerProfile.DJM_A9.decodeRouteSource(byteArrayOf(0, 0x0A), 4))
         assertEquals(0x0E, PioneerMixerProfile.DJM_V5.decodeRouteSource(byteArrayOf(0, 0x0E), 2))
-        assertEquals(
-            0x0A,
-            PioneerMixerProfile.DJM_900NXS2.decodeRouteSource(
-                byteArrayOf(1, 2, 3, 4, 0x0A),
-                4
-            )
-        )
-        assertEquals(
-            0x0F,
-            PioneerMixerProfile.DJM_750MK2.decodeRouteSource(
-                byteArrayOf(0x0F, 2, 3, 4, 5),
-                0
-            )
-        )
+        assertEquals(0x0A, PioneerMixerProfile.DJM_900NXS2.decodeRouteSource(byteArrayOf(1, 2, 3, 4, 0x0A), 4))
+        assertEquals(0x0F, PioneerMixerProfile.DJM_750MK2.decodeRouteSource(byteArrayOf(0x0F, 2, 3, 4, 5), 0))
     }
 
     @Test

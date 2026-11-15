@@ -15,27 +15,25 @@ class RecordingHealthEvaluatorTest {
         missedPacketDelta: Long = 0,
         writerErrorCode: Int = 0,
         xRuns: Int = 0
-    ) = RecordingHealthInput(
-        recording = recording,
-        usbIso = true,
-        streamOpen = streamOpen,
-        freeBytes = freeBytes,
-        remainingSeconds = remainingSeconds,
-        packetDelta = packetDelta,
-        byteDelta = byteDelta,
-        nonZeroByteDelta = nonZeroByteDelta,
-        missedPacketDelta = missedPacketDelta,
-        resubmitFailures = 0,
-        xRuns = xRuns,
-        writerErrorCode = writerErrorCode
-    )
+    ) =
+        RecordingHealthInput(
+            recording = recording,
+            usbIso = true,
+            streamOpen = streamOpen,
+            freeBytes = freeBytes,
+            remainingSeconds = remainingSeconds,
+            packetDelta = packetDelta,
+            byteDelta = byteDelta,
+            nonZeroByteDelta = nonZeroByteDelta,
+            missedPacketDelta = missedPacketDelta,
+            resubmitFailures = 0,
+            xRuns = xRuns,
+            writerErrorCode = writerErrorCode)
 
     @Test
     fun `nonzero USB noise with silent selected channels is not ready`() {
-        assertEquals(RecordingHealthLevel.SILENCE,
-            RecordingHealthEvaluator.evaluate(input(recording = false).copy(selectedPeakDb = -60f)).level)
-        assertEquals(RecordingHealthLevel.GOOD,
-            RecordingHealthEvaluator.evaluate(input(recording = false).copy(selectedPeakDb = -20f)).level)
+        assertEquals(RecordingHealthLevel.SILENCE, RecordingHealthEvaluator.evaluate(input(recording = false).copy(selectedPeakDb = -60f)).level)
+        assertEquals(RecordingHealthLevel.GOOD, RecordingHealthEvaluator.evaluate(input(recording = false).copy(selectedPeakDb = -20f)).level)
     }
 
     @Test
@@ -75,29 +73,25 @@ class RecordingHealthEvaluatorTest {
 
     @Test
     fun `low battery warns only when not charging`() {
-        assertEquals(RecordingHealthLevel.LOW_BATTERY,
-            RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 12, charging = false)).level)
-        assertEquals(RecordingHealthLevel.GOOD,
-            RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 12, charging = true)).level)
-        assertEquals(RecordingHealthLevel.GOOD,
-            RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 40, charging = false)).level)
+        assertEquals(RecordingHealthLevel.LOW_BATTERY, RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 12, charging = false)).level)
+        assertEquals(RecordingHealthLevel.GOOD, RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 12, charging = true)).level)
+        assertEquals(RecordingHealthLevel.GOOD, RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 40, charging = false)).level)
     }
 
     @Test
     fun `critical battery outranks usb warnings but not storage`() {
-        assertEquals(RecordingHealthLevel.LOW_BATTERY,
-            RecordingHealthEvaluator.evaluate(input(missedPacketDelta = 3).copy(batteryPercent = 4, charging = false)).level)
-        assertEquals(RecordingHealthLevel.USB_UNSTABLE,
+        assertEquals(
+            RecordingHealthLevel.LOW_BATTERY, RecordingHealthEvaluator.evaluate(input(missedPacketDelta = 3).copy(batteryPercent = 4, charging = false)).level)
+        assertEquals(
+            RecordingHealthLevel.USB_UNSTABLE,
             RecordingHealthEvaluator.evaluate(input(missedPacketDelta = 3).copy(batteryPercent = 12, charging = false)).level)
-        assertEquals(RecordingHealthLevel.LOW_STORAGE,
-            RecordingHealthEvaluator.evaluate(input(remainingSeconds = 30).copy(batteryPercent = 4, charging = false)).level)
+        assertEquals(
+            RecordingHealthLevel.LOW_STORAGE, RecordingHealthEvaluator.evaluate(input(remainingSeconds = 30).copy(batteryPercent = 4, charging = false)).level)
     }
 
     @Test
     fun `severe thermal status warns about overheating`() {
-        assertEquals(RecordingHealthLevel.OVERHEATING,
-            RecordingHealthEvaluator.evaluate(input().copy(thermalStatus = 3)).level)
-        assertEquals(RecordingHealthLevel.GOOD,
-            RecordingHealthEvaluator.evaluate(input().copy(thermalStatus = 2)).level)
+        assertEquals(RecordingHealthLevel.OVERHEATING, RecordingHealthEvaluator.evaluate(input().copy(thermalStatus = 3)).level)
+        assertEquals(RecordingHealthLevel.GOOD, RecordingHealthEvaluator.evaluate(input().copy(thermalStatus = 2)).level)
     }
 }

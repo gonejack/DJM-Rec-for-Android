@@ -1,12 +1,10 @@
 package com.audiopro.djmrec
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.content.Intent
 import android.view.WindowManager
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,19 +12,19 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.lifecycleScope
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.ui.MainScreen
 import com.audiopro.djmrec.ui.MainViewModel
 import com.audiopro.djmrec.ui.OnboardingScreen
 import com.audiopro.djmrec.ui.theme.DjmRecTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
-    private val requestPermissions = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { viewModel.ensureLiveMonitoring() }
+    private val requestPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { viewModel.ensureLiveMonitoring() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,11 +50,12 @@ class MainActivity : ComponentActivity() {
                 val keepScreenOnSetting by viewModel.keepScreenOn.collectAsState()
                 val liveState by viewModel.liveStreamState.collectAsState()
                 val powerSaveActive = viewModel.powerSaveActive.value
-                val keepAwake = recordingState is RecordingState.Recording ||
-                    recordingState is RecordingState.Paused ||
-                    liveState.isActive ||
-                    powerSaveActive ||
-                    (keepScreenOnSetting && recordingState is RecordingState.Monitoring)
+                val keepAwake =
+                    recordingState is RecordingState.Recording ||
+                        recordingState is RecordingState.Paused ||
+                        liveState.isActive ||
+                        powerSaveActive ||
+                        (keepScreenOnSetting && recordingState is RecordingState.Monitoring)
                 DisposableEffect(keepAwake) {
                     if (keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -66,10 +65,11 @@ class MainActivity : ComponentActivity() {
                 if (onboardingComplete) {
                     MainScreen(viewModel = viewModel)
                 } else {
-                    OnboardingScreen(onFinished = {
-                        viewModel.completeOnboarding()
-                        viewModel.rescanUsbDevices()
-                    })
+                    OnboardingScreen(
+                        onFinished = {
+                            viewModel.completeOnboarding()
+                            viewModel.rescanUsbDevices()
+                        })
                 }
             }
         }

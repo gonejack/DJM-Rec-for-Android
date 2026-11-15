@@ -10,9 +10,8 @@ import kotlin.math.tan
 /**
  * ITU-R BS.1770-4 / EBU R128 integrated loudness (LUFS) with absolute and relative gating.
  *
- * Audio is K-weighted and summed into 100 ms hops; each 400 ms gating block is four hops (75 %
- * overlap). Hop energies are kept, so [integratedLufs] can measure any trimmed range of a set
- * after a single analysis pass. A three-hour set keeps about 108,000 doubles.
+ * Audio is K-weighted and summed into 100 ms hops; each 400 ms gating block is four hops (75 % overlap). Hop energies are kept, so [integratedLufs] can measure
+ * any trimmed range of a set after a single analysis pass. A three-hour set keeps about 108,000 doubles.
  */
 class LoudnessMeter(sampleRate: Int, private val channels: Int) {
     private val filters = Array(channels) { KWeightingFilter(sampleRate) }
@@ -55,18 +54,14 @@ class LoudnessMeter(sampleRate: Int, private val channels: Int) {
         hops[hopCount++] = sum
     }
 
-    /**
-     * Gated integrated loudness over hops [fromHop, toHop), or null when the range holds no
-     * block above the -70 LUFS absolute gate (silence).
-     */
+    /** Gated integrated loudness over hops [fromHop, toHop), or null when the range holds no block above the -70 LUFS absolute gate (silence). */
     fun integratedLufs(fromHop: Int = 0, toHop: Int = hopCount): Double? {
         val start = fromHop.coerceIn(0, hopCount)
         val end = toHop.coerceIn(start, hopCount)
         val blockCount = end - start - 3
         if (blockCount <= 0) return null
-        val blocks = DoubleArray(blockCount) { index ->
-            (hops[start + index] + hops[start + index + 1] + hops[start + index + 2] + hops[start + index + 3]) / 4.0
-        }
+        val blocks =
+            DoubleArray(blockCount) { index -> (hops[start + index] + hops[start + index + 1] + hops[start + index + 2] + hops[start + index + 3]) / 4.0 }
         val absoluteGated = blocks.filter { loudness(it) > ABSOLUTE_GATE_LUFS }
         if (absoluteGated.isEmpty()) return null
         val relativeGate = loudness(absoluteGated.average()) + RELATIVE_GATE_LU
@@ -80,8 +75,7 @@ class LoudnessMeter(sampleRate: Int, private val channels: Int) {
         const val RELATIVE_GATE_LU = -10.0
         const val HOP_MILLIS = 100L
 
-        fun loudness(meanSquare: Double): Double =
-            if (meanSquare <= 0.0) Double.NEGATIVE_INFINITY else -0.691 + 10.0 * log10(meanSquare)
+        fun loudness(meanSquare: Double): Double = if (meanSquare <= 0.0) Double.NEGATIVE_INFINITY else -0.691 + 10.0 * log10(meanSquare)
     }
 }
 
@@ -100,13 +94,9 @@ internal class KWeightingFilter(sampleRate: Int) {
         val vh = 10.0.pow(gainDb / 20.0)
         val vb = vh.pow(0.4996667741545416)
         var a0 = 1.0 + k / q + k * k
-        shelf = Biquad(
-            (vh + vb * k / q + k * k) / a0,
-            2.0 * (k * k - vh) / a0,
-            (vh - vb * k / q + k * k) / a0,
-            2.0 * (k * k - 1.0) / a0,
-            (1.0 - k / q + k * k) / a0
-        )
+        shelf =
+            Biquad(
+                (vh + vb * k / q + k * k) / a0, 2.0 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0, 2.0 * (k * k - 1.0) / a0, (1.0 - k / q + k * k) / a0)
         // Stage 2: RLB high-pass at ~38 Hz.
         f0 = 38.13547087602444
         q = 0.5003270373238773
@@ -117,13 +107,7 @@ internal class KWeightingFilter(sampleRate: Int) {
 
     fun process(sample: Double): Double = highPass.process(shelf.process(sample))
 
-    private class Biquad(
-        private val b0: Double,
-        private val b1: Double,
-        private val b2: Double,
-        private val a1: Double,
-        private val a2: Double
-    ) {
+    private class Biquad(private val b0: Double, private val b1: Double, private val b2: Double, private val a1: Double, private val a2: Double) {
         private var x1 = 0.0
         private var x2 = 0.0
         private var y1 = 0.0
@@ -131,8 +115,10 @@ internal class KWeightingFilter(sampleRate: Int) {
 
         fun process(x: Double): Double {
             val y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-            x2 = x1; x1 = x
-            y2 = y1; y1 = y
+            x2 = x1
+            x1 = x
+            y2 = y1
+            y1 = y
             return y
         }
     }

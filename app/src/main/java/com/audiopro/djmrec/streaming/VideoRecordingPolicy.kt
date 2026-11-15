@@ -12,19 +12,19 @@ object VideoRecordingPolicy {
     const val WARN_MINUTES = 30L
 
     /** Saved-file bitrate, independent of (and higher than) the adaptive stream bitrate. */
-    fun recordBitrate(height: Int): Int = when {
-        height >= 1440 -> 20_000_000
-        height >= 1080 -> 12_000_000
-        else -> 8_000_000
-    }
+    fun recordBitrate(height: Int): Int =
+        when {
+            height >= 1440 -> 20_000_000
+            height >= 1080 -> 12_000_000
+            else -> 8_000_000
+        }
 
     fun bytesPerSecond(videoBitrate: Int): Long = (videoBitrate.toLong() + AUDIO_BITRATE) / 8
 
     fun gigabytesPerHour(videoBitrate: Int): Double = bytesPerSecond(videoBitrate) * 3600 / 1e9
 
     /** Minutes of video that fit before [MIN_FREE_BYTES] is reached. */
-    fun minutesRemaining(freeBytes: Long, videoBitrate: Int): Long =
-        (freeBytes - MIN_FREE_BYTES).coerceAtLeast(0) / bytesPerSecond(videoBitrate) / 60
+    fun minutesRemaining(freeBytes: Long, videoBitrate: Int): Long = (freeBytes - MIN_FREE_BYTES).coerceAtLeast(0) / bytesPerSecond(videoBitrate) / 60
 
     fun storageSummary(freeBytes: Long, videoBitrate: Int): String {
         val perHour = String.format(java.util.Locale.US, "%.1f", gigabytesPerHour(videoBitrate))

@@ -20,42 +20,22 @@ import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.DjmRecTheme
 
 /**
- * IDE-only previews for the stateless building blocks. The real screens take a
- * [com.audiopro.djmrec.ui.MainViewModel], which needs a live Application, USB host and audio
- * engine, so they cannot be rendered in the preview sandbox. These previews cover the pieces
- * that only need plain data, which is where most visual tuning happens.
+ * IDE-only previews for the stateless building blocks. The real screens take a [com.audiopro.djmrec.ui.MainViewModel], which needs a live Application, USB host
+ * and audio engine, so they cannot be rendered in the preview sandbox. These previews cover the pieces that only need plain data, which is where most visual
+ * tuning happens.
  */
 
 // Fake meter data: left at -8 dB, right at -2 dB (close to clipping).
-private val PreviewLevels = StereoLevels(
-    left = ChannelLevel(peakDb = -8f, rmsDb = -14f, isClipping = false),
-    right = ChannelLevel(peakDb = -2f, rmsDb = -9f, isClipping = false)
-)
+private val PreviewLevels =
+    StereoLevels(left = ChannelLevel(peakDb = -8f, rmsDb = -14f, isClipping = false), right = ChannelLevel(peakDb = -2f, rmsDb = -9f, isClipping = false))
 
-@Preview(
-    name = "VU meter",
-    widthDp = 360,
-    heightDp = 120,
-    showBackground = true,
-    backgroundColor = 0xFF101416
-)
+@Preview(name = "VU meter", widthDp = 360, heightDp = 120, showBackground = true, backgroundColor = 0xFF101416)
 @Composable
 private fun StereoVuMeterPreview() {
-    DjmRecTheme {
-        StereoVuMeter(
-            levels = PreviewLevels,
-            modifier = Modifier.background(BackgroundDark).padding(16.dp)
-        )
-    }
+    DjmRecTheme { StereoVuMeter(levels = PreviewLevels, modifier = Modifier.background(BackgroundDark).padding(16.dp)) }
 }
 
-@Preview(
-    name = "Format selector",
-    widthDp = 360,
-    heightDp = 110,
-    showBackground = true,
-    backgroundColor = 0xFF101416
-)
+@Preview(name = "Format selector", widthDp = 360, heightDp = 110, showBackground = true, backgroundColor = 0xFF101416)
 @Composable
 private fun FormatSelectorPreview() {
     DjmRecTheme {
@@ -64,50 +44,23 @@ private fun FormatSelectorPreview() {
             formats = RecordingFormat.entries,
             enabled = true,
             onSelect = {},
-            modifier = Modifier.background(BackgroundDark).padding(16.dp)
-        )
+            modifier = Modifier.background(BackgroundDark).padding(16.dp))
     }
 }
 
-@Preview(
-    name = "USB channel pairs",
-    widthDp = 360,
-    heightDp = 140,
-    showBackground = true,
-    backgroundColor = 0xFF101416
-)
+@Preview(name = "USB channel pairs", widthDp = 360, heightDp = 140, showBackground = true, backgroundColor = 0xFF101416)
 @Composable
 private fun ChannelPairSelectorPreview() {
     DjmRecTheme {
-        ChannelPairSelector(
-            selectedOffset = 2,
-            pairCount = 5,
-            enabled = true,
-            onSelect = {},
-            modifier = Modifier.background(BackgroundDark).padding(16.dp)
-        )
+        ChannelPairSelector(selectedOffset = 2, pairCount = 5, enabled = true, onSelect = {}, modifier = Modifier.background(BackgroundDark).padding(16.dp))
     }
 }
 
-@Preview(
-    name = "3-band waveform",
-    widthDp = 360,
-    heightDp = 180,
-    showBackground = true,
-    backgroundColor = 0xFF101416
-)
+@Preview(name = "3-band waveform", widthDp = 360, heightDp = 180, showBackground = true, backgroundColor = 0xFF101416)
 @Composable
 private fun RgbWaveformPreview() {
     val bins = remember { previewBins() }
-    DjmRecTheme {
-        RgbWaveform(
-            bins = bins,
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-                .height(120.dp)
-        )
-    }
+    DjmRecTheme { RgbWaveform(bins = bins, modifier = Modifier.padding(16.dp).fillMaxWidth().height(120.dp)) }
 }
 
 /** RgbWaveform expects groups of four floats: index 1/2/3 are low/mid/high, each in 0..1. */

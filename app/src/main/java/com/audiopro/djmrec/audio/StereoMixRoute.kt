@@ -8,17 +8,16 @@ data class StereoMixRoute(val leftChannel: Int = 0, val rightChannel: Int = 1) {
     fun validated(trackCount: Int): StereoMixRoute {
         val channels = trackCount.coerceAtLeast(1) * 2
         return StereoMixRoute(
-            leftChannel.takeIf { it == NONE || it in 0 until channels } ?: 0,
-            rightChannel.takeIf { it == NONE || it in 0 until channels } ?: 1
-        )
+            leftChannel.takeIf { it == NONE || it in 0 until channels } ?: 0, rightChannel.takeIf { it == NONE || it in 0 until channels } ?: 1)
     }
 
     companion object {
         const val NONE = -1
 
-        fun sourceLabel(channel: Int): String = when (channel) {
-            NONE -> "None"
-            else -> "Track ${channel / 2 + 1} ${if (channel % 2 == 0) "L" else "R"}"
-        }
+        fun sourceLabel(channel: Int): String =
+            when (channel) {
+                NONE -> "None"
+                else -> "Track ${channel / 2 + 1} ${if (channel % 2 == 0) "L" else "R"}"
+            }
     }
 }

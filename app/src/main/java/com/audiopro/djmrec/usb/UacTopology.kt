@@ -14,11 +14,7 @@ data class UacTopology(
     val descriptorSampleRates: List<Int>
 )
 
-data class AudioControlInterface(
-    val interfaceNumber: Int,
-    val totalLength: Int,
-    val audioClassVersion: Int
-)
+data class AudioControlInterface(val interfaceNumber: Int, val totalLength: Int, val audioClassVersion: Int)
 
 data class ClockSourceInfo(
     val id: Int,
@@ -31,34 +27,13 @@ data class ClockSourceInfo(
     val supportsFrequencySet: Boolean
 )
 
-data class ClockSelectorInfo(
-    val id: Int,
-    val sourceIds: List<Int>,
-    val controls: Int,
-    val nameStringIndex: Int
-)
+data class ClockSelectorInfo(val id: Int, val sourceIds: List<Int>, val controls: Int, val nameStringIndex: Int)
 
-data class FeatureUnitInfo(
-    val id: Int,
-    val sourceId: Int,
-    val controls: List<Int>,
-    val nameStringIndex: Int
-)
+data class FeatureUnitInfo(val id: Int, val sourceId: Int, val controls: List<Int>, val nameStringIndex: Int)
 
-data class MixerUnitInfo(
-    val id: Int,
-    val sourceIds: List<Int>,
-    val outputChannelCount: Int,
-    val controls: List<Int>,
-    val nameStringIndex: Int
-)
+data class MixerUnitInfo(val id: Int, val sourceIds: List<Int>, val outputChannelCount: Int, val controls: List<Int>, val nameStringIndex: Int)
 
-data class SelectorUnitInfo(
-    val id: Int,
-    val sourceIds: List<Int>,
-    val controls: Int,
-    val nameStringIndex: Int
-)
+data class SelectorUnitInfo(val id: Int, val sourceIds: List<Int>, val controls: Int, val nameStringIndex: Int)
 
 data class TerminalInfo(
     val id: Int,

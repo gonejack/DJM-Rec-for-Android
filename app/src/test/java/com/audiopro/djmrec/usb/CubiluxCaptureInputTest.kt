@@ -16,7 +16,8 @@ class CubiluxCaptureInputTest {
     @Test
     fun usesTheUnmodifiedHardwareCapture() {
         assertEquals(930, raw.size)
-        assertEquals("25ca891c80134ab3245d32eec2c721d2466dc0379735a989185b568ee60283d7",
+        assertEquals(
+            "25ca891c80134ab3245d32eec2c721d2466dc0379735a989185b568ee60283d7",
             MessageDigest.getInstance("SHA-256").digest(raw).joinToString("") { "%02x".format(it) })
     }
 
@@ -63,8 +64,7 @@ class CubiluxCaptureInputTest {
 
     @Test
     fun prefersUsbInterfaceNamesAndLimitsFallbackNamesToTheVerifiedModel() {
-        assertEquals("External mic", UsbCaptureInputs.group(topology.audioStreamingInterfaces, 0x0BDA, 0x4F26,
-            mapOf(3 to "External mic")).last().name)
+        assertEquals("External mic", UsbCaptureInputs.group(topology.audioStreamingInterfaces, 0x0BDA, 0x4F26, mapOf(3 to "External mic")).last().name)
         assertEquals("Input 3", UsbCaptureInputs.group(topology.audioStreamingInterfaces, 1, 2).last().name)
     }
 
@@ -107,12 +107,19 @@ class CubiluxCaptureInputTest {
     private fun device(number: Int): UsbAudioDeviceInfo {
         val format = checkNotNull(UsbCaptureInputs.select(inputs, number))
         return UsbAudioDeviceInfo(
-            deviceName = "/dev/bus/usb/001/001", productName = "CB5", vendorId = 0x0BDA, productId = 0x4F26,
-            streamingInterfaceNumber = number, activeAlternateSetting = format.alternateSetting,
+            deviceName = "/dev/bus/usb/001/001",
+            productName = "CB5",
+            vendorId = 0x0BDA,
+            productId = 0x4F26,
+            streamingInterfaceNumber = number,
+            activeAlternateSetting = format.alternateSetting,
             isochronousInEndpointAddress = format.isochronousInEndpointAddress!!,
             isochronousInMaxPacketSize = format.isochronousInMaxPacketSize!!,
-            channelCount = format.channelCount, bitResolution = format.bitResolution, subframeSize = format.subframeSize,
-            supportedSampleRates = emptyList(), audioManagerDeviceId = 42, captureInputs = inputs
-        )
+            channelCount = format.channelCount,
+            bitResolution = format.bitResolution,
+            subframeSize = format.subframeSize,
+            supportedSampleRates = emptyList(),
+            audioManagerDeviceId = 42,
+            captureInputs = inputs)
     }
 }

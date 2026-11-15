@@ -18,17 +18,14 @@ data class PendingRecordingOutput(
     val format: RecordingFormat,
     val partIndex: Int
 ) {
-    fun toRecord(finalized: Boolean = false) = RecordingPartRecord(
-        uri = uri.toString(),
-        displayName = displayName,
-        format = format.name,
-        index = partIndex,
-        finalized = finalized
-    )
+    fun toRecord(finalized: Boolean = false) =
+        RecordingPartRecord(uri = uri.toString(), displayName = displayName, format = format.name, index = partIndex, finalized = finalized)
 }
 
 data class RecoverySummary(val recovered: Int, val removed: Int, val failed: Int) {
-    val hasWork: Boolean get() = recovered + removed + failed > 0
+    val hasWork: Boolean
+        get() = recovered + removed + failed > 0
+
     val message: String
         get() = buildString {
             append("Interrupted recording recovery finished.")
@@ -43,28 +40,12 @@ object RecordingOutputManager {
     private const val MIN_RECOVERABLE_WAV_BYTES = 44L
     private const val MIN_RECOVERABLE_FLAC_BYTES = 42L
 
-    fun create(
-        context: Context,
-        sessionId: String,
-        format: RecordingFormat,
-        partIndex: Int
-    ): PendingRecordingOutput? = createNamed(context, displayName(sessionId, format, partIndex), format, partIndex)
+    fun create(context: Context, sessionId: String, format: RecordingFormat, partIndex: Int): PendingRecordingOutput? =
+        createNamed(context, displayName(sessionId, format, partIndex), format, partIndex)
 
-    /**
-     * One multitrack track file in `Music/DJMRec/tracks_<session>/`, alongside the mix.
-     * [trackNumber] is 1-based, as shown in the UI.
-     */
-    fun createTrack(
-        context: Context,
-        sessionId: String,
-        trackNumber: Int,
-        label: String,
-        format: RecordingFormat,
-        partIndex: Int
-    ): PendingRecordingOutput? = createNamed(
-        context, trackDisplayName(trackNumber, label, format, partIndex), format, partIndex,
-        relativePath = trackFolder(sessionId)
-    )
+    /** One multitrack track file in `Music/DJMRec/tracks_<session>/`, alongside the mix. [trackNumber] is 1-based, as shown in the UI. */
+    fun createTrack(context: Context, sessionId: String, trackNumber: Int, label: String, format: RecordingFormat, partIndex: Int): PendingRecordingOutput? =
+        createNamed(context, trackDisplayName(trackNumber, label, format, partIndex), format, partIndex, relativePath = trackFolder(sessionId))
 
     /** A pending file in Music/DJMRec with an explicit name, e.g. an edited copy of a set. */
     fun createNamed(
@@ -74,33 +55,33 @@ object RecordingOutputManager {
         partIndex: Int = 1,
         relativePath: String = RELATIVE_PATH
     ): PendingRecordingOutput? = runCatching {
-        val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
-            put(MediaStore.Audio.Media.MIME_TYPE, mimeType(format))
-            put(MediaStore.Audio.Media.RELATIVE_PATH, relativePath)
-            put(MediaStore.Audio.Media.IS_PENDING, 1)
-            put(MediaStore.Audio.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
-        }
-        val uri = context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
-            ?: return@runCatching null
+        val values =
+            ContentValues().apply {
+                put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
+                put(MediaStore.Audio.Media.MIME_TYPE, mimeType(format))
+                put(MediaStore.Audio.Media.RELATIVE_PATH, relativePath)
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
+                put(MediaStore.Audio.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+            }
+        val uri = context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values) ?: return@runCatching null
         val descriptor = context.contentResolver.openFileDescriptor(uri, "rw")
         if (descriptor == null) {
             runCatching { context.contentResolver.delete(uri, null, null) }
             return@runCatching null
         }
         PendingRecordingOutput(uri, descriptor, displayName, format, partIndex)
-    }.getOrNull()
+    }
+        .getOrNull()
 
     fun finalize(context: Context, output: PendingRecordingOutput, durationMillis: Long): Boolean {
         output.descriptor.closeQuietly()
-        val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.IS_PENDING, 0)
-            put(MediaStore.Audio.Media.DURATION, durationMillis.coerceAtLeast(0))
-            put(MediaStore.Audio.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-        }
-        return runCatching {
-            context.contentResolver.update(output.uri, values, null, null) == 1
-        }.getOrDefault(false)
+        val values =
+            ContentValues().apply {
+                put(MediaStore.Audio.Media.IS_PENDING, 0)
+                put(MediaStore.Audio.Media.DURATION, durationMillis.coerceAtLeast(0))
+                put(MediaStore.Audio.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+            }
+        return runCatching { context.contentResolver.update(output.uri, values, null, null) == 1 }.getOrDefault(false)
     }
 
     fun abandon(context: Context, output: PendingRecordingOutput) {
@@ -110,7 +91,8 @@ object RecordingOutputManager {
 
     fun freeBytes(): Long = runCatching {
         StatFs(Environment.getExternalStorageDirectory().absolutePath).availableBytes
-    }.getOrDefault(Long.MAX_VALUE)
+    }
+        .getOrDefault(Long.MAX_VALUE)
 
     fun recoverInterrupted(context: Context): RecoverySummary {
         val journal = RecordingSessionStore.read(context)
@@ -118,12 +100,15 @@ object RecordingOutputManager {
         var recovered = 0
         var removed = 0
         var failed = 0
-        val pending = runCatching { pendingOutputs(context) }
-            .getOrElse { return RecoverySummary(0, 0, 1) }
+        val pending = runCatching {
+            pendingOutputs(context)
+        }
+            .getOrElse {
+                return RecoverySummary(0, 0, 1)
+            }
         pending.forEach { pendingOutput ->
             val journalPart = journalUris[pendingOutput.first.toString()]
-            val format = journalPart?.format?.let { runCatching { RecordingFormat.valueOf(it) }.getOrNull() }
-                ?: formatFromName(pendingOutput.second)
+            val format = journalPart?.format?.let { runCatching { RecordingFormat.valueOf(it) }.getOrNull() } ?: formatFromName(pendingOutput.second)
             val result = recoverOne(context, pendingOutput.first, pendingOutput.second, format)
             when (result) {
                 RecoveryResult.RECOVERED -> recovered++
@@ -140,16 +125,9 @@ object RecordingOutputManager {
         return (fileSize - 8).toInt() to (fileSize - 44).coerceAtLeast(0).toInt()
     }
 
-    private fun recoverOne(
-        context: Context,
-        uri: Uri,
-        displayName: String,
-        format: RecordingFormat?
-    ): RecoveryResult = runCatching {
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "rw")
-            ?: return RecoveryResult.FAILED
-        val size = descriptor.statSize.takeIf { it >= 0 }
-            ?: runCatching { Os.fstat(descriptor.fileDescriptor).st_size }.getOrDefault(-1)
+    private fun recoverOne(context: Context, uri: Uri, displayName: String, format: RecordingFormat?): RecoveryResult = runCatching {
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "rw") ?: return RecoveryResult.FAILED
+        val size = descriptor.statSize.takeIf { it >= 0 } ?: runCatching { Os.fstat(descriptor.fileDescriptor).st_size }.getOrDefault(-1)
         if (format == null || size < minimumRecoverableBytes(format)) {
             descriptor.close()
             context.contentResolver.delete(uri, null, null)
@@ -165,85 +143,77 @@ object RecordingOutputManager {
         }
         descriptor.closeQuietly()
         val recoveredName = displayName.substringBeforeLast('.') + "_recovered." + format.extension
-        val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, recoveredName)
-            put(MediaStore.Audio.Media.IS_PENDING, 0)
-            put(MediaStore.Audio.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-        }
+        val values =
+            ContentValues().apply {
+                put(MediaStore.Audio.Media.DISPLAY_NAME, recoveredName)
+                put(MediaStore.Audio.Media.IS_PENDING, 0)
+                put(MediaStore.Audio.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+            }
         if (context.contentResolver.update(uri, values, null, null) == 1) {
             RecoveryResult.RECOVERED
         } else {
             RecoveryResult.FAILED
         }
-    }.getOrDefault(RecoveryResult.FAILED)
+    }
+        .getOrDefault(RecoveryResult.FAILED)
 
     @Suppress("DEPRECATION") // The URI flag also supports Android 10 (API 29).
     private fun pendingOutputs(context: Context): List<Pair<Uri, String>> {
         val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME)
-        val selection = "${MediaStore.Audio.Media.IS_PENDING}=1 AND " +
-            "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?"
+        val selection = "${MediaStore.Audio.Media.IS_PENDING}=1 AND " + "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?"
         val result = mutableListOf<Pair<Uri, String>>()
         // A SQL predicate alone does not opt in to rows hidden by MediaStore's pending filter.
-        context.contentResolver.query(
-            MediaStore.setIncludePending(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI),
-            projection,
-            selection,
-            arrayOf("$RELATIVE_PATH%"),
-            null
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
-            while (cursor.moveToNext()) {
-                result += ContentUris.withAppendedId(
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                    cursor.getLong(idColumn)
-                ) to cursor.getString(nameColumn)
+        context.contentResolver
+            .query(MediaStore.setIncludePending(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI), projection, selection, arrayOf("$RELATIVE_PATH%"), null)
+            ?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+                while (cursor.moveToNext()) {
+                    result += ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cursor.getLong(idColumn)) to cursor.getString(nameColumn)
+                }
             }
-        }
         return result
     }
 
-    private fun minimumRecoverableBytes(format: RecordingFormat): Long = when (format) {
-        RecordingFormat.WAV -> MIN_RECOVERABLE_WAV_BYTES
-        RecordingFormat.FLAC -> MIN_RECOVERABLE_FLAC_BYTES
-        // Two 320 kbps MPEG frames (~24 ms each) -- anything shorter is not worth keeping.
-        RecordingFormat.MP3 -> 2_048L
-    }
+    private fun minimumRecoverableBytes(format: RecordingFormat): Long =
+        when (format) {
+            RecordingFormat.WAV -> MIN_RECOVERABLE_WAV_BYTES
+            RecordingFormat.FLAC -> MIN_RECOVERABLE_FLAC_BYTES
+            // Two 320 kbps MPEG frames (~24 ms each) -- anything shorter is not worth keeping.
+            RecordingFormat.MP3 -> 2_048L
+        }
 
-    private fun formatFromName(name: String): RecordingFormat? =
-        RecordingFormat.entries.firstOrNull { name.endsWith(".${it.extension}", ignoreCase = true) }
+    private fun formatFromName(name: String): RecordingFormat? = RecordingFormat.entries.firstOrNull { name.endsWith(".${it.extension}", ignoreCase = true) }
 
-    private fun hasExpectedSignature(
-        descriptor: ParcelFileDescriptor,
-        format: RecordingFormat
-    ): Boolean = runCatching {
+    private fun hasExpectedSignature(descriptor: ParcelFileDescriptor, format: RecordingFormat): Boolean = runCatching {
         val bytes = ByteArray(if (format == RecordingFormat.WAV) 12 else 4)
         val read = Os.pread(descriptor.fileDescriptor, bytes, 0, bytes.size, 0)
         if (read != bytes.size) return@runCatching false
         when (format) {
-            RecordingFormat.WAV ->
-                bytes.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) &&
-                    bytes.copyOfRange(8, 12).contentEquals("WAVE".toByteArray())
+            RecordingFormat.WAV -> bytes.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) && bytes.copyOfRange(8, 12).contentEquals("WAVE".toByteArray())
             RecordingFormat.FLAC -> bytes.contentEquals("fLaC".toByteArray())
             // Raw MPEG Layer III stream starts on a frame sync (11 set bits); shine writes
             // no ID3 tag.
             RecordingFormat.MP3 -> bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0
         }
-    }.getOrDefault(false)
-
-    private fun mimeType(format: RecordingFormat): String = when (format) {
-        RecordingFormat.WAV -> "audio/wav"
-        RecordingFormat.FLAC -> "audio/flac"
-        RecordingFormat.MP3 -> "audio/mpeg"
     }
+        .getOrDefault(false)
+
+    private fun mimeType(format: RecordingFormat): String =
+        when (format) {
+            RecordingFormat.WAV -> "audio/wav"
+            RecordingFormat.FLAC -> "audio/flac"
+            RecordingFormat.MP3 -> "audio/mpeg"
+        }
 
     internal fun displayName(sessionId: String, format: RecordingFormat, partIndex: Int): String {
         // The normal mixtape is one file. Only a genuine RIFF rollover gets a part suffix.
-        val suffix = if (format == RecordingFormat.WAV && partIndex > 1) {
-            "_part${partIndex.toString().padStart(2, '0')}"
-        } else {
-            ""
-        }
+        val suffix =
+            if (format == RecordingFormat.WAV && partIndex > 1) {
+                "_part${partIndex.toString().padStart(2, '0')}"
+            } else {
+                ""
+            }
         return "mix_${sessionId}$suffix.${format.extension}"
     }
 
@@ -253,14 +223,21 @@ object RecordingOutputManager {
     /** e.g. "02 CH1 Post-fader.wav"; WAV rollover parts get the set's `_partNN` suffix. */
     internal fun trackDisplayName(trackNumber: Int, label: String, format: RecordingFormat, partIndex: Int): String {
         val number = trackNumber.coerceIn(1, 99).toString().padStart(2, '0')
-        val cleaned = label.map { if (it.isISOControl() || it in "/\\:*?\"<>|") ' ' else it }
-            .joinToString("").replace(Regex("\\s+"), " ").trim().take(60).trimEnd('.', ' ')
+        val cleaned =
+            label
+                .map { if (it.isISOControl() || it in "/\\:*?\"<>|") ' ' else it }
+                .joinToString("")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(60)
+                .trimEnd('.', ' ')
         val name = cleaned.ifEmpty { "Track $number" }
-        val suffix = if (format == RecordingFormat.WAV && partIndex > 1) {
-            "_part${partIndex.toString().padStart(2, '0')}"
-        } else {
-            ""
-        }
+        val suffix =
+            if (format == RecordingFormat.WAV && partIndex > 1) {
+                "_part${partIndex.toString().padStart(2, '0')}"
+            } else {
+                ""
+            }
         val title = if (cleaned == "Track $trackNumber") cleaned else "$number $name"
         return "$title$suffix.${format.extension}"
     }
@@ -269,5 +246,9 @@ object RecordingOutputManager {
         runCatching { close() }
     }
 
-    private enum class RecoveryResult { RECOVERED, REMOVED, FAILED }
+    private enum class RecoveryResult {
+        RECOVERED,
+        REMOVED,
+        FAILED
+    }
 }

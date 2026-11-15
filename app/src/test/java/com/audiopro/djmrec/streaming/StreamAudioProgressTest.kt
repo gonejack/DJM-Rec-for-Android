@@ -4,7 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StreamAudioProgressTest {
-    @Test fun timestampsFollowSamplesDespiteBurstDelivery() {
+    @Test
+    fun timestampsFollowSamplesDespiteBurstDelivery() {
         for (rate in listOf(44100, 48000, 96000)) {
             val clock = PcmFrameClock(rate)
             val first = clock.next(4096, 1_000_000)
@@ -14,7 +15,8 @@ class StreamAudioProgressTest {
         }
     }
 
-    @Test fun audioStallDetectedEvenWhenVideoKeepsFlowing() {
+    @Test
+    fun audioStallDetectedEvenWhenVideoKeepsFlowing() {
         val watchdog = MediaProgressWatchdog()
         watchdog.reset(0)
         assertNull(watchdog.failure(1000, 100, 10, 10))

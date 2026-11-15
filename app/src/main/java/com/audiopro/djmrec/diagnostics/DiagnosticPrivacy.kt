@@ -6,9 +6,13 @@ internal object DiagnosticPrivacy {
     private val bearer = Regex("(?i)\\bbearer\\s+[^\\s,;]+")
     private val secrets = Regex("(?i)(authorization|bearer|access_token|refresh_token|stream_key|password|token|serial)(\\s*[:=]\\s*|\\s+)[^\\s,;]+")
     private val paths = Regex("(?:/storage/|/sdcard/|/data/)[^\\r\\n]+")
-    fun redact(message: String): String = paths.replace(secrets.replace(bearer.replace(urls.replace(message, "[URL omitted]"), "Bearer [redacted]")) {
-        "${it.groupValues[1]}=[redacted]"
-    }, "[private path omitted]").take(12_000)
+
+    fun redact(message: String): String =
+        paths
+            .replace(
+                secrets.replace(bearer.replace(urls.replace(message, "[URL omitted]"), "Bearer [redacted]")) { "${it.groupValues[1]}=[redacted]" },
+                "[private path omitted]")
+            .take(12_000)
 
     /** Configuration descriptors only. USB string descriptors may contain serial numbers. */
     fun descriptorHex(raw: ByteArray): String {
@@ -16,7 +20,10 @@ internal object DiagnosticPrivacy {
         var offset = 0
         while (offset + 1 < raw.size && offset < 16_384) {
             val length = raw[offset].toInt() and 255
-            if (length < 2 || offset + length > raw.size) { out.append(" [truncated]"); break }
+            if (length < 2 || offset + length > raw.size) {
+                out.append(" [truncated]")
+                break
+            }
             if ((raw[offset + 1].toInt() and 255) != 3) {
                 for (i in offset until offset + length) out.append("%02x".format(raw[i].toInt() and 255))
                 out.append(' ')

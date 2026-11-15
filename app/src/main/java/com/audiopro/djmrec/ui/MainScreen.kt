@@ -36,10 +36,10 @@ import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.DjmRecApplication
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.BackgroundDark
+import com.audiopro.djmrec.ui.theme.DjmRecMotion
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
-import com.audiopro.djmrec.ui.theme.DjmRecMotion
 import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 
 private enum class Destination(val route: String, val label: String, val icon: ImageVector) {
@@ -60,12 +60,10 @@ fun MainScreen(viewModel: MainViewModel) {
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
     // Fullscreen camera console takes over the whole window (no bars); closing it from the
     // console brings the app chrome back while the stream keeps running.
-    val cameraMode = selectedDestination == Destination.LIVE && liveState.isActive &&
-        liveState.usesCamera && viewModel.cameraConsoleOpen.value
+    val cameraMode = selectedDestination == Destination.LIVE && liveState.isActive && liveState.usesCamera && viewModel.cameraConsoleOpen.value
     // The power-saving overlay is a true fullscreen takeover: hide both bars with the console.
     // Scoped to the Record tab so a deep link can't leave other screens without chrome.
-    val chromeless = cameraMode ||
-        (viewModel.powerSaveActive.value && selectedDestination == Destination.RECORDING)
+    val chromeless = cameraMode || (viewModel.powerSaveActive.value && selectedDestination == Destination.RECORDING)
 
     // djmrec://<route> deep links land here and navigate once the shell is up.
     val pendingRoute by viewModel.pendingRoute.collectAsState()
@@ -81,75 +79,61 @@ fun MainScreen(viewModel: MainViewModel) {
             onDismissRequest = application::dismissRecoveryNotice,
             title = { Text("Recording recovered") },
             text = { Text(message) },
-            confirmButton = {
-                TextButton(onClick = application::dismissRecoveryNotice) { Text("OK") }
-            }
-        )
+            confirmButton = { TextButton(onClick = application::dismissRecoveryNotice) { Text("OK") } })
     }
 
     Scaffold(
         containerColor = BackgroundDark,
         bottomBar = {
-            if (!chromeless) NavigationBar(containerColor = SurfaceDark, tonalElevation = 0.dp) {
-                listOf(Destination.RECORDING, Destination.LIVE, Destination.RECORDINGS, Destination.SETTINGS).forEach { dest ->
-                    NavigationBarItem(
-                        selected = selectedDestination == dest,
-                        onClick = { selectedDestination = dest },
-                        icon = { Icon(dest.icon, contentDescription = dest.label) },
-                        label = { Text(dest.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = BackgroundDark,
-                            selectedTextColor = AccentGreen,
-                            indicatorColor = AccentGreen,
-                            unselectedIconColor = TextSecondary,
-                            unselectedTextColor = TextSecondary
-                        )
-                    )
+            if (!chromeless)
+                NavigationBar(containerColor = SurfaceDark, tonalElevation = 0.dp) {
+                    listOf(Destination.RECORDING, Destination.LIVE, Destination.RECORDINGS, Destination.SETTINGS).forEach { dest ->
+                        NavigationBarItem(
+                            selected = selectedDestination == dest,
+                            onClick = { selectedDestination = dest },
+                            icon = { Icon(dest.icon, contentDescription = dest.label) },
+                            label = { Text(dest.label) },
+                            colors =
+                                NavigationBarItemDefaults.colors(
+                                    selectedIconColor = BackgroundDark,
+                                    selectedTextColor = AccentGreen,
+                                    indicatorColor = AccentGreen,
+                                    unselectedIconColor = TextSecondary,
+                                    unselectedTextColor = TextSecondary))
+                    }
                 }
-            }
         },
         topBar = {
-            if (!chromeless) TopAppBar(
-                title = {
-                    Text(
-                        text = if (selectedDestination == Destination.RECORDING) "DJM REC" else selectedDestination.label,
-                        color = TextPrimary
-                    )
-                },
-                actions = {
-                    IconButton(onClick = {
-                        selectedDestination = Destination.RECORDING
-                        viewModel.powerSaveActive.value = true
-                    }) {
-                        Icon(Icons.Filled.BatterySaver, contentDescription = "Power saving mode", tint = TextPrimary)
+            if (!chromeless)
+                TopAppBar(
+                    title = { Text(text = if (selectedDestination == Destination.RECORDING) "DJM REC" else selectedDestination.label, color = TextPrimary) },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                selectedDestination = Destination.RECORDING
+                                viewModel.powerSaveActive.value = true
+                            }) {
+                                Icon(Icons.Filled.BatterySaver, contentDescription = "Power saving mode", tint = TextPrimary)
+                            }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark))
+        }) { padding ->
+            val reducedMotion = rememberReducedMotion()
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                AnimatedContent(
+                    targetState = selectedDestination,
+                    transitionSpec = { DjmRecMotion.pageTransform(forward = targetState.ordinal >= initialState.ordinal, reduced = reducedMotion) },
+                    label = "destinations",
+                    modifier = Modifier.fillMaxSize()) { destination ->
+                        destinationState.SaveableStateProvider(destination.name) {
+                            when (destination) {
+                                Destination.RECORDING -> RecorderScreen(viewModel = viewModel, onOpenLibrary = { selectedDestination = Destination.RECORDINGS })
+                                Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
+                                Destination.RECORDINGS -> LibraryScreen(viewModel = viewModel)
+                                Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                            }
+                        }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
-            )
-        }
-    ) { padding ->
-        val reducedMotion = rememberReducedMotion()
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            AnimatedContent(
-                targetState = selectedDestination,
-                transitionSpec = {
-                    DjmRecMotion.pageTransform(
-                        forward = targetState.ordinal >= initialState.ordinal,
-                        reduced = reducedMotion
-                    )
-                },
-                label = "destinations",
-                modifier = Modifier.fillMaxSize()
-            ) { destination ->
-                destinationState.SaveableStateProvider(destination.name) {
-                    when (destination) {
-                        Destination.RECORDING -> RecorderScreen(viewModel = viewModel, onOpenLibrary = { selectedDestination = Destination.RECORDINGS })
-                        Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
-                        Destination.RECORDINGS -> LibraryScreen(viewModel = viewModel)
-                        Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                    }
-                }
             }
         }
-    }
 }

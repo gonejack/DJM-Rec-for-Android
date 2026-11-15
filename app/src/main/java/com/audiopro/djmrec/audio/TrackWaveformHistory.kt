@@ -1,13 +1,11 @@
 package com.audiopro.djmrec.audio
 
 /**
- * Longer waveform history for the multitrack timeline. A native analyzer snapshot holds only
- * the newest 512 bins (about 3 s); every snapshot's new bins are folded here, [binsPerColumn]
- * bins per column (the loudest value of each band), keeping the newest [capacity] columns.
+ * Longer waveform history for the multitrack timeline. A native analyzer snapshot holds only the newest 512 bins (about 3 s); every snapshot's new bins are
+ * folded here, [binsPerColumn] bins per column (the loudest value of each band), keeping the newest [capacity] columns.
  *
- * Snapshot layout (see AudioEngine.getWaveformBins): 512 x [amplitude, low, mid, high],
- * oldest first, then the committed-bin cursor modulo 1048576, then the bin length in ms.
- * Not thread-safe: feed and read it from one thread (the UI thread).
+ * Snapshot layout (see AudioEngine.getWaveformBins): 512 x [amplitude, low, mid, high], oldest first, then the committed-bin cursor modulo 1048576, then the
+ * bin length in ms. Not thread-safe: feed and read it from one thread (the UI thread).
  */
 class TrackWaveformHistory(override val capacity: Int = 640, val binsPerColumn: Int = 8) : WaveformHistory {
     private val columns = FloatArray(capacity * BANDS)
@@ -27,7 +25,8 @@ class TrackWaveformHistory(override val capacity: Int = 640, val binsPerColumn: 
     var binMillis = 1000.0 / 163
         private set
 
-    val columnMillis: Double get() = binMillis * binsPerColumn
+    val columnMillis: Double
+        get() = binMillis * binsPerColumn
 
     fun accept(snapshot: FloatArray) {
         if (snapshot.size < SNAPSHOT_FLOATS) return

@@ -31,8 +31,11 @@ data class MultitrackTrack(
     val inputNumber: Int? = null
 ) {
     /** Native track-bus index. */
-    val index: Int get() = channels.index
-    val displayNumber: Int get() = inputNumber ?: (index + 1)
+    val index: Int
+        get() = channels.index
+
+    val displayNumber: Int
+        get() = inputNumber ?: (index + 1)
 }
 
 /** Per-mixer multitrack choices, persisted by [MainViewModel]. */
@@ -49,21 +52,15 @@ data class MultitrackSettings(
 
 object MultitrackRows {
     /**
-     * Builds the rows for [device] with [channelCount] wire channels. Mixers with a routing
-     * catalog name each pair after its source; other devices use their USB pair numbers.
+     * Builds the rows for [device] with [channelCount] wire channels. Mixers with a routing catalog name each pair after its source; other devices use their
+     * USB pair numbers.
      */
-    fun build(
-        device: UsbAudioDeviceInfo,
-        channelCount: Int,
-        masterOffset: Int,
-        settings: MultitrackSettings
-    ): List<MultitrackTrack> {
+    fun build(device: UsbAudioDeviceInfo, channelCount: Int, masterOffset: Int, settings: MultitrackSettings): List<MultitrackTrack> {
         val tracks = MultitrackLayout.tracks(channelCount)
         if (device.recordsSelectedInputs) {
             return device.selectedInterfaceNumbers.mapIndexed { position, number ->
                 val channels = TrackChannels(position, position * 2, 2)
-                val name = device.captureInputs.firstOrNull { it.interfaceNumber == number }?.name
-                    ?.removePrefix("Cubilux CB5 ") ?: "Input $number"
+                val name = device.captureInputs.firstOrNull { it.interfaceNumber == number }?.name?.removePrefix("Cubilux CB5 ") ?: "Input $number"
                 MultitrackTrack(
                     channels = channels,
                     isMaster = false,
@@ -75,8 +72,7 @@ object MultitrackRows {
                     routingError = null,
                     armed = settings.armed[channels.index] ?: true,
                     gainDb = settings.gainsDb[channels.index] ?: 0f,
-                    inputNumber = position + 1
-                )
+                    inputNumber = position + 1)
             }
         }
         val catalog = PioneerTrackRouting.catalogFor(device.pioneerMixerProfile)
@@ -84,34 +80,34 @@ object MultitrackRows {
         return tracks.map { channels ->
             val output = channels.index
             val options = catalog?.let { PioneerTrackRouting.options(it, output) }.orEmpty()
-            val selected = if (options.isEmpty()) null
-                else settings.currentSources[output] ?: settings.chosenSources[output] ?: catalog?.preset?.getOrNull(output)
+            val selected =
+                if (options.isEmpty()) null else settings.currentSources[output] ?: settings.chosenSources[output] ?: catalog?.preset?.getOrNull(output)
             val source = selected?.let { PioneerTrackRouting.source(it, catalog?.channelOfOutput?.getOrNull(output)) }
             val isMaster = channels.index == masterTrack
-            val usbFileLabel = if (channels.width == 2) "USB ${channels.firstChannel + 1}-${channels.firstChannel + 2}"
-                else "USB ${channels.firstChannel + 1}"
+            val usbFileLabel = if (channels.width == 2) "USB ${channels.firstChannel + 1}-${channels.firstChannel + 2}" else "USB ${channels.firstChannel + 1}"
             MultitrackTrack(
                 channels = channels,
                 isMaster = isMaster,
-                title = when {
-                    isMaster -> "Master"
-                    source != null -> source.label
-                    else -> channels.usbLabel
-                },
-                subtitle = when {
-                    isMaster && source != null -> "${channels.usbLabel} · ${source.label}"
-                    source != null -> channels.usbLabel
-                    channels.width == 1 -> "Mono input"
-                    else -> "Stereo input"
-                },
+                title =
+                    when {
+                        isMaster -> "Master"
+                        source != null -> source.label
+                        else -> channels.usbLabel
+                    },
+                subtitle =
+                    when {
+                        isMaster && source != null -> "${channels.usbLabel} · ${source.label}"
+                        source != null -> channels.usbLabel
+                        channels.width == 1 -> "Mono input"
+                        else -> "Stereo input"
+                    },
                 fileLabel = source?.label ?: usbFileLabel,
                 // The master pair stays on the mix: its route is owned by the recording itself.
                 sourceOptions = if (isMaster) emptyList() else options,
                 selectedSource = selected,
                 routingError = settings.routingErrors[output],
                 armed = !isMaster && (settings.armed[channels.index] ?: true),
-                gainDb = settings.gainsDb[channels.index] ?: 0f
-            )
+                gainDb = settings.gainsDb[channels.index] ?: 0f)
         }
     }
 }
