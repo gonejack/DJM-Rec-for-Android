@@ -1,0 +1,123 @@
+root = true
+
+# ─── 全项目默认 ────────────────────────────────────────────────────────────
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# ─── Kotlin：这一节同时被三样东西读取 ──────────────────────────────────────
+#   1. Android Studio / IntelliJ 的 Reformat Code (Ctrl+Alt+L / Cmd+Opt+L)
+#   2. ktfmt 的 IDE 插件（ktfmt_* 前缀的键）
+#   3. ktlint（如果你以后加）
+# 目标：让"手工换行"不再是决策 —— 一条规则只有一个答案。
+[*.{kt,kts}]
+max_line_length = 160
+
+# 缩进：块 4 空格，续行 4 空格（与 kotlin.code.style=official 一致）
+indent_size = 4
+ij_kotlin_indent_size = 4
+ij_continuation_indent_size = 4
+ij_kotlin_continuation_indent_size = 4
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
+
+# ── 换行策略：能放下就一行，放不下才拆 ────────────────────────────────────
+# normal = 只在超出行宽时换行；不用 on_every_item（那会强制每个参数独占一行，
+#          让 `Column(modifier = Modifier.weight(1f)) {` 这种短调用也被拆成 3 行）
+ij_kotlin_call_parameters_wrap = normal
+ij_kotlin_method_parameters_wrap = normal
+ij_kotlin_extends_list_wrap = normal
+ij_kotlin_assignment_wrap = normal
+
+# Modifier 链 / 方法链：同样的策略 —— 能用一行就一行，
+# 超宽时每个 .call() 独占一行并以 4 空格续行缩进。
+ij_kotlin_method_call_chain_wrap = normal
+ij_kotlin_continuation_indent_for_chained_calls = true
+ij_kotlin_wrap_first_method_in_call_chain = false
+
+# 拆行时的括号位置（ktfmt 的 kotlinlang 风格）
+ij_kotlin_call_parameters_new_line_after_left_paren = true
+ij_kotlin_call_parameters_right_paren_on_new_line = false
+ij_kotlin_method_parameters_new_line_after_left_paren = true
+ij_kotlin_method_parameters_right_paren_on_new_line = true
+
+# ── 尾随逗号：本项目不用 ──────────────────────────────────────────────────
+# 你现有代码一个尾随逗号都没有，所以关掉，避免 ktfmt/IDE 反向添加。
+ij_kotlin_allow_trailing_comma = false
+ij_kotlin_allow_trailing_comma_on_call_site = false
+ktfmt_trailing_comma_management_strategy = none
+
+# ── 让工具完全接管换行 ───────────────────────────────────────────────────
+# false = Reformat Code 会把你手工加的换行合并掉，严格按上面的规则重排。
+# 这正是"固定风格"的含义：同一个表达式永远只有一种排版。
+# 如果你更想保留自己的断行，把它改成 true（代价是排版不再唯一）。
+ij_kotlin_keep_line_breaks = false
+
+# ── 空行与其它 ───────────────────────────────────────────────────────────
+ij_kotlin_keep_blank_lines_in_code = 2
+ij_kotlin_keep_blank_lines_in_declarations = 2
+ij_kotlin_keep_blank_lines_before_right_brace = 2
+ij_kotlin_blank_lines_after_class_header = 0
+ij_kotlin_blank_lines_around_block_when_branches = 0
+ij_kotlin_name_count_to_use_star_import = 9999
+ij_kotlin_name_count_to_use_star_import_for_members = 9999
+ij_kotlin_imports_layout = *
+ij_kotlin_line_comment_add_space = false
+ij_kotlin_line_comment_at_first_column = true
+ij_kotlin_block_comment_at_first_column = true
+ij_kotlin_lbrace_on_next_line = false
+ij_kotlin_else_on_new_line = false
+ij_kotlin_catch_on_new_line = false
+ij_kotlin_finally_on_new_line = false
+ij_kotlin_while_on_new_line = false
+ij_kotlin_wrap_elvis_expressions = 1
+ij_kotlin_wrap_expression_body_functions = 1
+
+# ── 空格 ─────────────────────────────────────────────────────────────────
+ij_kotlin_space_after_comma = true
+ij_kotlin_space_before_comma = false
+ij_kotlin_space_after_type_colon = true
+ij_kotlin_space_before_type_colon = false
+ij_kotlin_space_after_extend_colon = true
+ij_kotlin_space_before_extend_colon = true
+ij_kotlin_space_before_lambda_arrow = true
+ij_kotlin_spaces_around_function_type_arrow = true
+ij_kotlin_spaces_around_assignment_operators = true
+ij_kotlin_spaces_around_equality_operators = true
+ij_kotlin_spaces_around_logical_operators = true
+ij_kotlin_spaces_around_additive_operators = true
+ij_kotlin_spaces_around_multiplicative_operators = true
+ij_kotlin_spaces_around_unary_operator = false
+ij_kotlin_spaces_around_range = false
+ij_kotlin_spaces_around_when_arrow = true
+ij_kotlin_space_before_if_parentheses = true
+ij_kotlin_space_before_when_parentheses = true
+ij_kotlin_space_before_for_parentheses = true
+ij_kotlin_space_before_while_parentheses = true
+ij_kotlin_space_before_catch_parentheses = true
+ij_kotlin_insert_whitespaces_in_simple_one_line_method = true
+ij_kotlin_keep_indents_on_empty_lines = false
+
+# ── 注释/注解位置 ────────────────────────────────────────────────────────
+ij_kotlin_method_annotation_wrap = split_into_lines
+ij_kotlin_class_annotation_wrap = split_into_lines
+ij_kotlin_field_annotation_wrap = off
+ij_kotlin_parameter_annotation_wrap = off
+ij_kotlin_variable_annotation_wrap = off
+ij_kotlin_align_multiline_parameters = true
+ij_kotlin_align_multiline_parameters_in_calls = false
+ij_kotlin_align_in_columns_case_branch = false
+ij_kotlin_align_multiline_binary_operation = false
+ij_kotlin_align_multiline_extends_list = false
+ij_kotlin_align_multiline_method_parentheses = false
+ij_kotlin_enum_constants_wrap = off
+ij_kotlin_continuation_indent_for_expression_bodies = true
+ij_kotlin_continuation_indent_in_argument_lists = true
+ij_kotlin_continuation_indent_in_elvis = false
+ij_kotlin_continuation_indent_in_if_conditions = false
+ij_kotlin_continuation_indent_in_parameter_lists = false
+ij_kotlin_continuation_indent_in_supertype_lists = false
+ij_java_names_count_to_use_import_on_demand = 9999
